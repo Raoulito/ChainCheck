@@ -2077,15 +2077,15 @@ Goal: Full node-and-edge graph like Chainalysis Reactor.
 
 --- 7D: Layout Options ---
 
-  7D-1  [ ] Dagre (hierarchical) — default
+  7D-1  [x] Dagre (hierarchical) — default
   7D-2  [ ] Force-directed (d3-force in Web Worker)
-  7D-3  [ ] Circular
-  7D-4  [ ] Layout switcher → triggers worker recomputation
-  7D-5  [ ] "Reset layout" button
+  7D-3  [x] Circular
+  7D-4  [x] Layout switcher → triggers worker recomputation
+  7D-5  [x] "Reset layout" button
 
 --- 7E: Node Interactions ---
 
-  7E-1  [ ] Hover: tooltip (address, label, balance, risk, exposure %, hop distance)
+  7E-1  [x] Hover: tooltip (address, label, balance, risk, exposure %, hop distance)
               NEW: show exposure % from Step 4B if available
   7E-2  [ ] Click: expand node (trigger lookup, add edges live)
   7E-3  [ ] Right-click context menu:
@@ -2096,13 +2096,13 @@ Goal: Full node-and-edge graph like Chainalysis Reactor.
 
 --- 7F: Edge Interactions ---
 
-  7F-1  [ ] Hover: tx hash, value, timestamp, token, USD value (historical)
+  7F-1  [x] Hover: tx hash, value, timestamp, token, USD value (historical)
   7F-2  [ ] Click: open TxDetail panel (reuse Step 2, shows method name)
 
 --- 7G: Controls Panel ---
 
-  7G-1  [ ] Zoom, pan, fit-to-screen
-  7G-2  [ ] Toggle labels on/off
+  7G-1  [x] Zoom, pan, fit-to-screen
+  7G-2  [x] Toggle labels on/off
   7G-3  [ ] Reuse FilterControls.jsx
   7G-4  [ ] Pin all / Unpin all
   7G-5  [ ] "Collapse exchange": merge edges to/from exchange into summary
@@ -2113,11 +2113,11 @@ Goal: Full node-and-edge graph like Chainalysis Reactor.
 
 --- 7H: UI Extras ---
 
-  7H-1  [ ] Color + shape legend
+  7H-1  [x] Color + shape legend
   7H-2  [ ] Minimap
   7H-3  [ ] Screenshot export (PNG/SVG)
-  7H-4  [ ] Node/edge count indicator
-  7H-5  [ ] Graph updates live from SSE trace events
+  7H-4  [x] Node/edge count indicator
+  7H-5  [x] Graph updates live from SSE trace events
 
 --- 7I: Testing ---
 

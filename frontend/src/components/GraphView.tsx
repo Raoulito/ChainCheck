@@ -36,12 +36,7 @@ const RISK_COLORS: Record<string, string> = {
   SEVERE: '#ef4444',
 };
 
-const ENTITY_SHAPES: Record<string, cytoscape.Css.NodeShape> = {
-  exchange: 'hexagon',
-  defi: 'diamond',
-  mixer: 'pentagon',
-  sanctioned: 'square',
-};
+type LayoutType = 'dagre' | 'circular';
 
 interface GraphViewProps {
   onAddressClick?: (address: string) => void;
@@ -54,6 +49,9 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
     const nodesRef = useRef<Map<string, GraphNode>>(new Map());
     const edgesRef = useRef<GraphEdge[]>([]);
     const [nodeCount, setNodeCount] = useState(0);
+    const [edgeCount, setEdgeCount] = useState(0);
+    const [showLabels, setShowLabels] = useState(true);
+    const [layoutType, setLayoutType] = useState<LayoutType>('dagre');
     const { positions, isComputing, computeLayout } = useGraphLayout();
 
     // Initialize Cytoscape
@@ -86,17 +84,17 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
             },
           },
           {
-            selector: 'node[entityShape]',
-            style: {
-              shape: 'data(entityShape)' as unknown as cytoscape.Css.NodeShape,
-            },
-          },
-          {
             selector: 'node.root',
             style: {
               'background-color': '#3b82f6',
               'border-color': '#60a5fa',
               'border-width': 3,
+            },
+          },
+          {
+            selector: 'node.hidden-label',
+            style: {
+              label: '',
             },
           },
           {
@@ -120,6 +118,12 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
               'target-arrow-color': '#ef4444',
             },
           },
+          {
+            selector: 'edge.hidden-label',
+            style: {
+              label: '',
+            },
+          },
         ],
         layout: { name: 'preset' },
         minZoom: 0.1,
@@ -132,12 +136,26 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         if (addr && onAddressClick) onAddressClick(addr);
       });
 
-      // Hover tooltip via title
+      // Tooltip popover on hover
       cy.on('mouseover', 'node', (evt) => {
         const node = evt.target;
-        containerRef.current!.title = `${node.data('fullAddress')}\n${node.data('labelText') || 'Unknown'}`;
+        const addr = node.data('fullAddress') || '';
+        const label = node.data('labelText') || 'Unknown';
+        const hop = node.data('hopLevel') ?? '?';
+        containerRef.current!.title = `${addr}\nLabel: ${label}\nHop: ${hop}`;
       });
       cy.on('mouseout', 'node', () => {
+        containerRef.current!.title = '';
+      });
+
+      // Edge tooltip
+      cy.on('mouseover', 'edge', (evt) => {
+        const edge = evt.target;
+        const label = edge.data('edgeLabel') || '';
+        const txHash = edge.data('txHash') || '';
+        containerRef.current!.title = `${label}\nTx: ${txHash}`;
+      });
+      cy.on('mouseout', 'edge', () => {
         containerRef.current!.title = '';
       });
 
@@ -158,14 +176,15 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         for (const [id, pos] of Object.entries(positions)) {
           const node = cy.getElementById(id);
           if (node.length > 0) {
-            node.position(pos);
+            node.animate({ position: pos, duration: 300 } as unknown as cytoscape.AnimationOptions);
           }
         }
       });
-      cy.fit(undefined, 40);
+      setTimeout(() => cy.fit(undefined, 40), 350);
     }, [positions]);
 
-    const runLayout = useCallback(() => {
+    const runLayout = useCallback((type?: LayoutType) => {
+      const lt = type ?? layoutType;
       const nodes = Array.from(nodesRef.current.values()).map(n => ({
         id: n.address,
         label: n.label ?? undefined,
@@ -175,9 +194,26 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         target: e.to,
       }));
       if (nodes.length > 0) {
-        computeLayout(nodes, edges, 'dagre');
+        computeLayout(nodes, edges, lt);
       }
-    }, [computeLayout]);
+    }, [computeLayout, layoutType]);
+
+    const toggleLabels = useCallback(() => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      const next = !showLabels;
+      setShowLabels(next);
+      if (next) {
+        cy.elements().removeClass('hidden-label');
+      } else {
+        cy.elements().addClass('hidden-label');
+      }
+    }, [showLabels]);
+
+    const handleLayoutChange = useCallback((type: LayoutType) => {
+      setLayoutType(type);
+      runLayout(type);
+    }, [runLayout]);
 
     useImperativeHandle(ref, () => ({
       addNode(node: GraphNode) {
@@ -195,9 +231,9 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
               displayLabel: node.label ?? truncAddr,
               fullAddress: node.address,
               labelText: node.label,
+              hopLevel: node.hop,
               size: node.hop === 0 ? 40 : Math.max(20, 35 - node.hop * 5),
               riskColor: node.risk ? RISK_COLORS[node.risk] : undefined,
-              entityShape: undefined, // Will be set when entity data is available
             },
             classes: node.hop === 0 ? 'root' : undefined,
             position: { x: Math.random() * 400, y: Math.random() * 400 },
@@ -215,14 +251,12 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
           const edgeId = `${edge.from}-${edge.to}-${edge.tx_hash}`;
           if (cy.getElementById(edgeId).length) continue;
 
-          // Compute edge thickness based on value
           let thickness = 1;
           try {
             const val = BigInt(edge.value);
             thickness = Math.max(1, Math.min(6, Number(val > 0n ? BigInt(Math.ceil(Math.log10(Number(val) + 1))) : 0n)));
           } catch { /* ignore */ }
 
-          // Format edge label
           let edgeLabel = '';
           try {
             const val = Number(BigInt(edge.value));
@@ -239,8 +273,10 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
               target: edge.to,
               thickness,
               edgeLabel,
+              txHash: edge.tx_hash,
             },
           });
+          setEdgeCount(edgesRef.current.length);
         }
       },
 
@@ -255,6 +291,7 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         nodesRef.current.clear();
         edgesRef.current = [];
         setNodeCount(0);
+        setEdgeCount(0);
         cyRef.current?.elements().remove();
       },
     }));
@@ -262,16 +299,27 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
     return (
       <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden mt-4">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 flex-wrap gap-2">
           <span className="text-xs text-gray-400">
-            Cytoscape ({nodeCount} nodes)
+            {nodeCount} nodes, {edgeCount} edges
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {isComputing && (
               <span className="text-xs text-yellow-400 animate-pulse">Computing layout...</span>
             )}
+
+            {/* Layout selector */}
+            <select
+              value={layoutType}
+              onChange={(e) => handleLayoutChange(e.target.value as LayoutType)}
+              className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1 border border-gray-600"
+            >
+              <option value="dagre">Hierarchical</option>
+              <option value="circular">Circular</option>
+            </select>
+
             <button
-              onClick={runLayout}
+              onClick={() => runLayout()}
               className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
             >
               Re-layout
@@ -282,7 +330,44 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
             >
               Fit
             </button>
+            <button
+              onClick={toggleLabels}
+              className={`text-xs px-2 py-1 rounded ${showLabels ? 'bg-blue-700 text-white' : 'bg-gray-700 text-gray-300'} hover:bg-gray-600`}
+            >
+              Labels
+            </button>
+            <button
+              onClick={() => {
+                const cy = cyRef.current;
+                if (!cy) return;
+                cy.zoom(cy.zoom() * 1.3);
+                cy.center();
+              }}
+              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+            >
+              +
+            </button>
+            <button
+              onClick={() => {
+                const cy = cyRef.current;
+                if (!cy) return;
+                cy.zoom(cy.zoom() / 1.3);
+                cy.center();
+              }}
+              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+            >
+              -
+            </button>
           </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 px-3 py-1 border-b border-gray-700 text-xs text-gray-500">
+          <span><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />Root</span>
+          <span><span className="inline-block w-2 h-2 rounded-full border-2 border-green-500 mr-1" />Low risk</span>
+          <span><span className="inline-block w-2 h-2 rounded-full border-2 border-yellow-500 mr-1" />Medium</span>
+          <span><span className="inline-block w-2 h-2 rounded-full border-2 border-orange-500 mr-1" />High</span>
+          <span><span className="inline-block w-2 h-2 rounded-full border-2 border-red-500 mr-1" />Severe</span>
         </div>
 
         {/* Graph container */}
