@@ -1,4 +1,4 @@
-import type { LookupResponse, PriceEnrichRequest, PriceEnrichResponse, LabelInfo } from '../types/api';
+import type { LookupResponse, PriceEnrichRequest, PriceEnrichResponse, LabelInfo, RiskScore } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -47,5 +47,31 @@ export async function searchLabels(
 ): Promise<LabelInfo[]> {
   const res = await fetch(`${API_BASE}/api/labels/search?entity=${encodeURIComponent(entity)}`);
   if (!res.ok) throw new Error(`Label search failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getRiskScore(
+  address: string,
+  chain: string = 'eth'
+): Promise<RiskScore> {
+  const res = await fetch(`${API_BASE}/api/risk/${address}?chain=${chain}`);
+  if (!res.ok) throw new Error(`Risk score failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getExposure(
+  address: string,
+  chain: string = 'eth'
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/api/risk/${address}/exposure?chain=${chain}`);
+  if (!res.ok) throw new Error(`Exposure failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getCluster(
+  address: string
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/api/cluster/${address}`);
+  if (!res.ok) throw new Error(`Cluster failed: ${res.status}`);
   return res.json();
 }

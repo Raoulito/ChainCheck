@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { lookupAddress, enrichPrices, batchLabels } from './client';
+import { lookupAddress, enrichPrices, batchLabels, getRiskScore, getExposure } from './client';
 import type { LookupResponse, PriceEnrichRequest, LabelInfo } from '../types/api';
 import { timestampToDateStr } from '../utils/formatters';
 
@@ -46,5 +46,23 @@ export function useLabels(addresses: string[]) {
     queryFn: () => batchLabels(addresses),
     enabled: addresses.length > 0,
     staleTime: 10 * 60 * 1000,
+  });
+}
+
+export function useRiskScore(address: string | null, chain: string | null) {
+  return useQuery({
+    queryKey: ['risk', address, chain],
+    queryFn: () => getRiskScore(address!, chain!),
+    enabled: !!address && !!chain,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useExposure(address: string | null, chain: string | null) {
+  return useQuery({
+    queryKey: ['exposure', address, chain],
+    queryFn: () => getExposure(address!, chain!),
+    enabled: !!address && !!chain,
+    staleTime: 5 * 60 * 1000,
   });
 }

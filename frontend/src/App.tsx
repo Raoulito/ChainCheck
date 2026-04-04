@@ -8,7 +8,9 @@ import { FilterBar } from './components/FilterBar';
 import { TxTable } from './components/TxTable';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Breadcrumb } from './components/Breadcrumb';
-import { useLookup } from './api/hooks';
+import { RiskBadge } from './components/RiskBadge';
+import { ExposureChart } from './components/ExposureChart';
+import { useLookup, useRiskScore, useExposure } from './api/hooks';
 import { useTraceSession } from './stores/traceSessionStore';
 
 const queryClient = new QueryClient({
@@ -29,6 +31,8 @@ function Explorer() {
   const { push } = useTraceSession();
 
   const { data, isLoading, error, refetch } = useLookup(chain, address, page);
+  const { data: riskData } = useRiskScore(address, chain);
+  const { data: exposureData } = useExposure(address, chain);
 
   const handleSubmit = (newChain: string, newAddress: string) => {
     setChain(newChain);
@@ -105,8 +109,18 @@ function Explorer() {
               </p>
             </div>
 
-            {/* Stats */}
+            {/* Risk + Stats */}
+            {riskData && (
+              <div className="mb-4">
+                <RiskBadge risk={riskData} />
+              </div>
+            )}
             <StatsHeader stats={data.stats} chain={data.chain} />
+            {exposureData && (
+              <div className="mb-4">
+                <ExposureChart data={exposureData as { direct_exposure: Record<string, string>; indirect_exposure: Record<string, string>; total_volume_analyzed: string; hops_analyzed: number }} />
+              </div>
+            )}
 
             {/* Filters */}
             <FilterBar
