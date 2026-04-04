@@ -16,6 +16,7 @@ from app.rate_limiter import limiter
 from app.routers.lookup import router as lookup_router
 from app.routers.prices import router as prices_router
 from app.routers.labels import router as labels_router
+from app.routers.risk import router as risk_router
 
 logging.basicConfig(level=getattr(logging, config.log_level))
 logger = logging.getLogger(__name__)
@@ -86,6 +87,7 @@ async def validation_error_handler(request: Request, exc: ValidationError):
 app.include_router(lookup_router, prefix="/api")
 app.include_router(prices_router, prefix="/api")
 app.include_router(labels_router, prefix="/api")
+app.include_router(risk_router, prefix="/api")
 
 
 @app.get("/api/health")

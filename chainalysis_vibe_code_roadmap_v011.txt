@@ -1449,7 +1449,7 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
   NEW FEATURE: Instead of just a single score, show what PERCENTAGE of an
   address's volume is exposed to risky entities, broken down by hop distance.
 
-  4B-1  [ ] Create services/exposure.py:
+  4B-1  [x] Create services/exposure.py:
               def compute_exposure(address, chain, max_hops=3) → ExposureReport
 
               ExposureReport:
@@ -1471,16 +1471,16 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
                 hops_analyzed: 3
               }
 
-  4B-2  [ ] Compute by walking the transaction graph:
+  4B-2  [x] Compute by walking the transaction graph:
               - Direct: sum volume of txs where counterparty is labeled
               - Indirect: run a shallow BFS (reuse trace engine), sum volume
                 where any node in the path is labeled
               - Express as percentage of total volume
 
-  4B-3  [ ] This is expensive — cache aggressively, compute async.
+  4B-3  [x] This is expensive — cache aggressively, compute async.
               Return cached version immediately, recompute in background if stale.
 
-  4B-4  [ ] Frontend: show exposure donut chart in StatsPanel:
+  4B-4  [x] Frontend: show exposure donut chart in StatsPanel:
               "Direct Exposure: 14% Sanctioned, 8% Mixer, 78% Clean"
               "Indirect Exposure (3 hops): 32% Sanctioned, 18% Mixer, 44% Clean"
 
@@ -1491,7 +1491,7 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
   goes to an exchange deposit, and the remainder continues to another new
   change address. Repeats dozens of times.
 
-  4C-1  [ ] Create services/peeling.py:
+  4C-1  [x] Create services/peeling.py:
               def detect_peeling_chain(address, chain) → PeelingChain | None
 
               Detection logic:
@@ -1516,14 +1516,14 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
                 remainder_amount: "8.7 BTC"
               }
 
-  4C-2  [ ] This reuses change detection (Step 1E) and labels (Step 3).
+  4C-2  [x] This reuses change detection (Step 1E) and labels (Step 3).
               Only works well for BTC UTXO chains — not applicable to account model.
 
-  4C-3  [ ] Frontend: in FlowTree (Step 6), collapse peeling chains into a single
+  4C-3  [x] Frontend: in FlowTree (Step 6), collapse peeling chains into a single
               visual group: "Peeling Chain: 14 hops, 2.3 BTC extracted to 5 exchanges"
               Expandable to show individual peels.
 
-  4C-4  [ ] In GraphView (Step 7): render peeling chains as a single elongated
+  4C-4  [x] In GraphView (Step 7): render peeling chains as a single elongated
               "snake" node rather than 14 individual nodes (reduces clutter).
 
 --- 4D: Common Input Ownership Clustering (BTC) ---
@@ -1533,7 +1533,7 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
   certainly belong to the same entity (because you need the private key for
   each input to sign the transaction).
 
-  4D-1  [ ] Create services/clustering.py:
+  4D-1  [x] Create services/clustering.py:
 
               def cluster_by_common_input(address, txs) → Cluster:
                 """
@@ -1543,7 +1543,7 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
                 Union-Find data structure to merge clusters efficiently.
                 """
 
-  4D-2  [ ] Data structure: Union-Find (Disjoint Set Union):
+  4D-2  [x] Data structure: Union-Find (Disjoint Set Union):
               class UnionFind:
                 def find(self, x) → root
                 def union(self, x, y) → None
@@ -1554,7 +1554,7 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
                 for i in range(1, len(inputs)):
                   uf.union(inputs[0], inputs[i])
 
-  4D-3  [ ] Create app/models/cluster.py (SQLAlchemy model — see ORM-3).
+  4D-3  [x] Create app/models/cluster.py (SQLAlchemy model — see ORM-3).
               Schema (implement as SQLAlchemy Mapped columns, NOT raw SQL):
               CREATE TABLE clusters (
                 address TEXT PRIMARY KEY,
@@ -1564,47 +1564,47 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
               )
               CREATE INDEX idx_cluster ON clusters(cluster_id)
 
-  4D-4  [ ] On BTC address lookup: after fetching transactions, run clustering
+  4D-4  [x] On BTC address lookup: after fetching transactions, run clustering
               on all input addresses. Store results in clusters table.
 
-  4D-5  [ ] Cluster lookup: when displaying any BTC address, check if it belongs
+  4D-5  [x] Cluster lookup: when displaying any BTC address, check if it belongs
               to a cluster. If so:
               - Show: "This address is part of a cluster of 47 addresses"
               - If ANY address in the cluster is labeled (e.g., one is a known
                 Binance deposit), apply that label to the entire cluster.
               - Cluster balance = sum of all addresses in the cluster
 
-  4D-6  [ ] API endpoint: GET /api/cluster/{address}
+  4D-6  [x] API endpoint: GET /api/cluster/{address}
               Returns: { cluster_id, addresses: [...], total_balance, label (if any) }
 
-  4D-7  [ ] Frontend: show cluster badge next to BTC addresses:
+  4D-7  [x] Frontend: show cluster badge next to BTC addresses:
               "📎 Cluster (47 addresses)" — clickable to show full cluster
               In GraphView: option to merge cluster into single node
 
-  4D-8  [ ] IMPORTANT LIMITATION: Common Input Ownership does NOT work for
+  4D-8  [x] IMPORTANT LIMITATION: Common Input Ownership does NOT work for
               CoinJoin transactions (where multiple unrelated users combine inputs).
               Detect potential CoinJoin: if a transaction has many inputs from
               different addresses AND many outputs of equal value, it's likely
               a CoinJoin → do NOT cluster those inputs together.
               Flag: "Possible CoinJoin detected — clustering skipped for this tx"
 
-  4D-9  [ ] Test: two addresses used as inputs in same tx → same cluster
-  4D-10 [ ] Test: CoinJoin-like tx → clustering correctly skipped
-  4D-11 [ ] Test: label propagation — one labeled address in cluster → all get label
+  4D-9  [x] Test: two addresses used as inputs in same tx → same cluster
+  4D-10 [x] Test: CoinJoin-like tx → clustering correctly skipped
+  4D-11 [x] Test: label propagation — one labeled address in cluster → all get label
 
 --- 4E: Caching & Invalidation ---
 
-  4E-1  [ ] Create app/models/risk_score.py (SQLAlchemy model — see ORM-3)
-  4E-2  [ ] Cache scores after computation
-  4E-3  [ ] Mark stale when: OFAC updates, new txs discovered
-  4E-4  [ ] Lazy re-compute on next access
+  4E-1  [x] Create app/models/risk_score.py (SQLAlchemy model — see ORM-3)
+  4E-2  [x] Cache scores after computation
+  4E-3  [x] Mark stale when: OFAC updates, new txs discovered
+  4E-4  [x] Lazy re-compute on next access
 
 --- 4F: API Endpoints ---
 
-  4F-1  [ ] GET /api/risk/{address}
-  4F-2  [ ] POST /api/risk/batch
-  4F-3  [ ] GET /api/risk/{address}/exposure  (exposure report)
-  4F-4  [ ] GET /api/cluster/{address}        (BTC clustering)
+  4F-1  [x] GET /api/risk/{address}
+  4F-2  [x] POST /api/risk/batch
+  4F-3  [x] GET /api/risk/{address}/exposure  (exposure report)
+  4F-4  [x] GET /api/cluster/{address}        (BTC clustering)
 
 --- 4G: Frontend Integration ---
 
