@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AddressInput } from './components/AddressInput';
@@ -14,9 +14,12 @@ import { TraceControls } from './components/TraceControls';
 import { TraceProgress } from './components/TraceProgress';
 import { GraphView } from './components/GraphView';
 import type { GraphHandle } from './components/GraphView';
+import { FlowTree } from './components/FlowTree';
+import { TraceFilterControls } from './components/TraceFilterControls';
 import { useLookup, useRiskScore, useExposure } from './api/hooks';
 import { useTraceStream } from './hooks/useTraceStream';
 import { useTraceSession } from './stores/traceSessionStore';
+import { exportTraceCsv } from './utils/exportCsv';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +39,9 @@ function Explorer() {
   const { push } = useTraceSession();
   const graphRef = useRef<GraphHandle>(null);
   const { progress, metadata, status: traceStatus, startTracing, cancelTracing } = useTraceStream(graphRef);
+  const [traceDirection, setTraceDirection] = useState<'forward' | 'backward'>('forward');
+  const [traceMinAmount, setTraceMinAmount] = useState('0');
+  const [traceTokenFilter, setTraceTokenFilter] = useState('');
 
   const { data, isLoading, error, refetch } = useLookup(chain, address, page);
   const { data: riskData } = useRiskScore(address, chain);
@@ -133,12 +139,49 @@ function Explorer() {
             <TraceControls
               address={data.address}
               chain={data.chain}
-              onStartTrace={startTracing}
+              onStartTrace={(params) => {
+                setTraceDirection(params.direction);
+                graphRef.current?.clear();
+                startTracing(params);
+              }}
               isTracing={traceStatus === 'streaming'}
               onCancel={cancelTracing}
             />
             <TraceProgress progress={progress} status={traceStatus} metadata={metadata} />
             <GraphView ref={graphRef} />
+
+            {/* Flow tree + filters (visible after trace starts) */}
+            {traceStatus !== 'idle' && (
+              <>
+                <TraceFilterControls
+                  minAmount={traceMinAmount}
+                  onMinAmountChange={setTraceMinAmount}
+                  tokenFilter={traceTokenFilter}
+                  onTokenFilterChange={setTraceTokenFilter}
+                  availableTokens={(() => {
+                    const graph = graphRef.current?.getGraph();
+                    if (!graph) return [];
+                    const tokens = new Set(graph.edges.map(e => e.token));
+                    return Array.from(tokens);
+                  })()}
+                  onExport={() => {
+                    const graph = graphRef.current?.getGraph();
+                    if (graph) exportTraceCsv(graph.nodes, graph.edges, data.address);
+                  }}
+                  hasData={(graphRef.current?.getGraph()?.edges.length ?? 0) > 0}
+                />
+                <FlowTree
+                  graphRef={graphRef}
+                  rootAddress={data.address}
+                  direction={traceDirection}
+                  isStreaming={traceStatus === 'streaming'}
+                  onAddressClick={handleAddressClick}
+                  chain={data.chain}
+                  minAmount={traceMinAmount}
+                  tokenFilter={traceTokenFilter || undefined}
+                />
+              </>
+            )}
 
             {/* Filters */}
             <FilterBar

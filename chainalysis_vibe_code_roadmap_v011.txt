@@ -1924,12 +1924,12 @@ Goal: Readable fund-flow analysis without needing graph rendering.
 
 --- 6A: Flow Tree Component ---
 
-  6A-1  [ ] Build FlowTree.jsx (indented collapsible tree from trace results)
-  6A-2  [ ] Each tree node: amount, token, USD value (historical), address,
+  6A-1  [x] Build FlowTree.jsx (indented collapsible tree from trace results)
+  6A-2  [x] Each tree node: amount, token, USD value (historical), address,
               entity badge, risk badge, timestamp, pruned indicator, confirmations
-  6A-3  [ ] Collapsible sub-trees
-  6A-4  [ ] Click address to navigate (Step 2 hop trace)
-  6A-5  [ ] Tree updates live via SSE events
+  6A-3  [x] Collapsible sub-trees
+  6A-4  [x] Click address to navigate (Step 2 hop trace)
+  6A-5  [x] Tree updates live via SSE events
 
 --- 6B: Peeling Chain Collapse ---
 
@@ -1945,12 +1945,12 @@ Goal: Readable fund-flow analysis without needing graph rendering.
 
 --- 6C: Filters ---
 
-  6C-1  [ ] Build FilterControls.jsx (shared, reused in Step 7):
+  6C-1  [x] Build FilterControls.jsx (shared, reused in Step 7):
               - Min amount slider (BigInt), date range, token selector
               - "Show only flagged paths" / "Show only paths to sanctioned"
               - "Show only finalized transactions" toggle
-  6C-2  [ ] Apply filters client-side
-  6C-3  [ ] Show filter summary
+  6C-2  [x] Apply filters client-side
+  6C-3  [x] Show filter summary
 
 --- 6D: Path Highlighting ---
 
@@ -1959,8 +1959,8 @@ Goal: Readable fund-flow analysis without needing graph rendering.
 
 --- 6E: Export ---
 
-  6E-1  [ ] CSV export (with USD historical values column)
-  6E-2  [ ] Filename: chainscope_trace_{address}_{date}.csv
+  6E-1  [x] CSV export (with USD historical values column)
+  6E-2  [x] Filename: chainscope_trace_{address}_{date}.csv
 
 --- 6F: Testing ---
 
