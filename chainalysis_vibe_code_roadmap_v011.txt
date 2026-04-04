@@ -1,0 +1,2534 @@
+CHAINALYSIS-LIKE TOOL — VIBE CODE ROADMAP (v0.0.1.1)
+=====================================================
+
+PHILOSOPHY
+----------
+Build incrementally. Each step produces a working app you can use and demo.
+No full nodes. No Kafka. No Spark. Use public APIs and managed services.
+Ship fast, replace parts later when scale demands it.
+
+
+REEVALUATED TECH STACK
+----------------------
+
+Frontend:       React (Vite) + Tailwind CSS
+                TanStack Query (React Query) — ALL API fetching, caching, async enrichment
+                Zustand — global UI state (trace session, filters, renderer lock)
+Visualization:  Cytoscape.js (<300 nodes) + Sigma.js WebGL (300+ nodes, locked at trace start)
+                Recharts (charts/timelines) — BigInt → Number cast for data arrays
+                Web Workers for layout computation (dagre/COSE offloaded from main thread)
+Backend:        Python FastAPI (simple, async, great ecosystem)
+                SQLAlchemy 2.0 Async (Declarative Base) — ALL database access
+                Alembic — ALL schema creation and migrations (no raw CREATE TABLE)
+                + slowapi (inbound rate limiting on heavy endpoints)
+                + aiolimiter (proactive outbound rate limiting — global token bucket)
+                + SSE via sse-starlette (streaming trace progress to frontend)
+Database:       SQLite (with WAL mode + aiosqlite) → PostgreSQL → Neo4j/Memgraph
+                (start flat, migrate relational when needed, graph DB when
+                recursive CTEs bottleneck N-hop traces at scale)
+Blockchain:     Public APIs only (no nodes)
+                - Blockstream.info API (Bitcoin, free, no key)
+                - Etherscan / Basescan / etc. (EVM chains, free tier)
+                  ↳ txlist (native), tokentx (ERC-20), txlistinternal (internal)
+                - Blockchain.com API (Bitcoin, free)
+                - Solscan / Helius (Solana)
+                - LayerZero / Wormhole APIs (cross-chain bridge parsing)
+Prices:         CoinGecko free API (current AND historical price at time of tx)
+Labels/Tags:    Etherscan label DB (scraped/public), Arkham public data,
+                Walletexplorer.com (BTC clusters), OFAC SDN list (free CSV)
+Decoding:       4byte.directory API / eth-abi (function signature decoding for EVM)
+Precision:      Backend: Python Decimal for all value calculations
+                Frontend: BigInt or ethers.js utils for all wei/satoshi math
+Testing:        pytest + vcrpy/responses (record & replay HTTP for offline CI)
+Deployment:     Docker Compose locally, Railway/Fly.io when ready
+Secrets:        .env file from day one (see ENVIRONMENT SETUP below)
+
+
+=========================================================================
+ENVIRONMENT SETUP (do this before Step 1)
+=========================================================================
+
+  ENV-1  [ ] Create .env.example in repo root:
+               ETHERSCAN_API_KEY=your_key_here
+               BSCSCAN_API_KEY=your_key_here
+               POLYGONSCAN_API_KEY=your_key_here
+               HELIUS_API_KEY=your_key_here
+               COINGECKO_API_KEY=your_key_here
+               DATABASE_URL=sqlite+aiosqlite:///./chainscope.db
+               LOG_LEVEL=INFO
+               TRACE_MAX_NODES=500
+               TRACE_MAX_API_CALLS=200
+               TRACE_MAX_TXS_PER_NODE=50
+               ETHERSCAN_RATE_LIMIT=4.5
+               BLOCKSTREAM_RATE_LIMIT=8.0
+               ETH_FINALITY_BLOCKS=64
+               BTC_FINALITY_BLOCKS=6
+               DUST_FLOOR_ETH_WEI=10000000000000000
+               DUST_FLOOR_BTC_SAT=10000
+
+  ENV-2  [ ] Add .env to .gitignore (never commit real keys)
+
+  ENV-3  [ ] Create backend/app/config.py:
+               - Use Pydantic Settings to load .env
+               - Type all config values (str for keys, int for limits, float for rates)
+               - Add validation: raise on missing required keys
+               - Group: config.finality["eth"] → 64, config.dust_floor["eth"] → Decimal(...)
+
+  ENV-4  [ ] Frontend uses Vite's VITE_ prefix env vars for client-side config
+               - VITE_API_BASE_URL=http://localhost:8000
+
+  ENV-5  [ ] Create docker-compose.yml with:
+               - backend service (FastAPI, port 8000)
+               - frontend service (Vite dev server, port 5173)
+               - Shared .env file
+               - Volume mount for SQLite DB persistence
+
+  ⚠️  BUG PREVENTION: SQLite WAL Mode on Docker Volumes (Corruption Risk)
+
+  ENV-6  [ ] SQLite's WAL mode relies on shared memory files (-shm, -wal) for
+               concurrent reader/writer coordination. These shared memory locks
+               FAIL or CORRUPT on networked filesystems and certain virtualized
+               OS mounts — which is exactly what Docker Desktop for Windows/Mac
+               uses for managed volumes.
+
+               RULES:
+               - LOCAL DEV (Docker Desktop on Mac/Windows):
+                 Use a direct bind mount to a LOCAL filesystem path, NOT a
+                 Docker managed volume:
+                   volumes:
+                     - ./data/db:/app/data     # bind mount — WAL works
+                   # NOT: db-data:/app/data    # managed volume — WAL may corrupt
+
+               - CI/CD:
+                 Use an ephemeral SQLite in /tmp inside the container (no mount).
+                 Tests create + destroy the DB each run.
+
+               - CLOUD DEPLOYMENT (Fly.io, Railway, etc.):
+                 Skip SQLite entirely. Use PostgreSQL from day one.
+                 Cloud volumes are networked storage — WAL will corrupt.
+                 Set DATABASE_URL=postgresql://... in .env for cloud deploys.
+
+               - LINUX NATIVE (no Docker):
+                 No issue. WAL works perfectly on native ext4/btrfs.
+
+  ENV-7  [ ] Add a startup check in main.py:
+               if config.DATABASE_URL.startswith("sqlite") and is_running_in_docker():
+                 logger.warning("SQLite + Docker detected. Ensure you are using a "
+                                "local bind mount, not a managed volume. See ENV-6.")
+               Implement is_running_in_docker() by checking for /.dockerenv file.
+
+
+=========================================================================
+STATE MANAGEMENT PROTOCOL (mandatory: prevents disjointed frontend code)
+=========================================================================
+
+  ⚠️  VIBE-CODE GUARDRAIL: Unlocked state patterns cause LLMs to generate
+  fragile useEffect data-fetching loops, inconsistent caching, and race
+  conditions between components. Lock the patterns before coding starts.
+
+  TWO TOOLS. NO EXCEPTIONS.
+
+  TOOL 1: TanStack Query (React Query) — ALL server-state / API fetching
+  ---------------------------------------------------------------------------
+
+  SM-1   [ ] Install @tanstack/react-query and @tanstack/react-query-devtools
+  SM-2   [ ] Create QueryClientProvider in App.jsx with sensible defaults:
+               const queryClient = new QueryClient({
+                 defaultOptions: {
+                   queries: {
+                     staleTime: 5 * 60 * 1000,    // 5 min before refetch
+                     gcTime: 30 * 60 * 1000,       // 30 min garbage collect
+                     retry: 1,
+                     refetchOnWindowFocus: false,
+                   }
+                 }
+               })
+
+  SM-3   [ ] EVERY API call in the frontend MUST use a TanStack Query hook.
+              No raw fetch() inside useEffect(). No custom caching logic.
+
+              Address lookup:
+                const { data, isLoading, error } = useQuery({
+                  queryKey: ['lookup', chain, address],
+                  queryFn: () => api.lookupAddress(chain, address),
+                  enabled: !!address && !!chain,
+                })
+
+              Label batch:
+                const { data: labels } = useQuery({
+                  queryKey: ['labels', addressList],
+                  queryFn: () => api.batchLabels(addressList),
+                  enabled: addressList.length > 0,
+                })
+
+              Risk score:
+                const { data: risk } = useQuery({
+                  queryKey: ['risk', address],
+                  queryFn: () => api.getRisk(address),
+                })
+
+  SM-4   [ ] Historical price enrichment uses TanStack Query mutation:
+                const enrichMutation = useMutation({
+                  mutationFn: (txDates) => api.enrichPrices(txDates),
+                  onSuccess: (prices) => {
+                    // Merge prices into the lookup query cache
+                    queryClient.setQueryData(['lookup', chain, address], (old) => ({
+                      ...old,
+                      transactions: old.transactions.map(tx => ({
+                        ...tx,
+                        value_usd_at_time: prices[`${tx.token}:${tx.date}`] ?? null
+                      }))
+                    }))
+                  }
+                })
+
+              On page load: enrichMutation.mutate(visibleTxDates)
+              On pagination: enrichMutation.mutate(newPageTxDates)
+              TanStack Query handles deduplication, caching, and loading states.
+
+  SM-5   [ ] SSE trace streams are the ONE exception to TanStack Query.
+              The useTraceStream hook uses imperative handles (see Step 5E-2).
+              But trace JOB STATUS polling (GET /api/trace/{job_id}) DOES use
+              TanStack Query with refetchInterval for reconnection:
+                useQuery({
+                  queryKey: ['trace-job', jobId],
+                  queryFn: () => api.getTraceStatus(jobId),
+                  refetchInterval: status === 'running' ? 5000 : false,
+                })
+
+  TOOL 2: Zustand — ALL client-state / UI state
+  ---------------------------------------------------------------------------
+
+  SM-6   [ ] Install zustand
+  SM-7   [ ] Create stores/ directory in frontend/src/
+
+  SM-8   [ ] stores/traceSessionStore.js:
+               import { create } from 'zustand'
+               export const useTraceSession = create((set) => ({
+                 history: [],          // breadcrumb navigation history
+                 currentIndex: -1,
+                 rendererType: null,   // 'cytoscape' | 'sigma' — locked at trace start
+                 activeJobId: null,
+                 push: (item) => set((s) => ({
+                   history: [...s.history.slice(0, s.currentIndex + 1), item],
+                   currentIndex: s.currentIndex + 1
+                 })),
+                 back: () => set((s) => ({
+                   currentIndex: Math.max(0, s.currentIndex - 1)
+                 })),
+                 forward: () => set((s) => ({
+                   currentIndex: Math.min(s.history.length - 1, s.currentIndex + 1)
+                 })),
+                 lockRenderer: (type) => set({ rendererType: type }),
+                 setActiveJob: (id) => set({ activeJobId: id }),
+               }))
+
+  SM-9   [ ] stores/filterStore.js:
+               export const useFilterStore = create((set) => ({
+                 minValue: '0',
+                 dateRange: [null, null],
+                 token: null,
+                 showSpam: false,
+                 showFailed: false,
+                 showDust: false,
+                 showUnconfirmed: true,
+                 riskFilter: null,      // null | 'LOW' | 'MEDIUM' | 'HIGH' | 'SEVERE'
+                 setFilter: (key, value) => set({ [key]: value }),
+                 resetFilters: () => set({ minValue: '0', dateRange: [null, null], ... })
+               }))
+
+  SM-10  [ ] RULE: components never use useState for data that needs to survive
+              navigation between addresses. That goes in Zustand stores.
+              useState is ONLY for ephemeral local UI state (tooltip open, dropdown
+              expanded, input field text).
+
+
+=========================================================================
+DATABASE PROTOCOL (mandatory: prevents raw SQL chaos)
+=========================================================================
+
+  ⚠️  VIBE-CODE GUARDRAIL: If the AI reads CREATE TABLE statements, it will
+  try to execute raw SQL strings via aiosqlite. This leads to schema drift,
+  missing migrations, and impossible-to-debug production issues.
+
+  ONE ORM. ONE MIGRATION TOOL. NO RAW SQL.
+
+  ORM-1  [ ] Install SQLAlchemy 2.0 (async) + Alembic:
+               pip install sqlalchemy[asyncio] alembic aiosqlite
+
+  ORM-2  [ ] Create app/models/base.py:
+               from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass
+               from sqlalchemy.ext.asyncio import AsyncAttrs
+
+               class Base(AsyncAttrs, DeclarativeBase):
+                   pass
+
+  ORM-3  [ ] ALL database tables are defined as SQLAlchemy models in app/models/.
+              NEVER write raw CREATE TABLE SQL. NEVER call cursor.execute().
+              The ONLY SQL that executes is generated by SQLAlchemy and Alembic.
+
+  ORM-4  [ ] Example model (labels — replaces the raw CREATE TABLE in Step 3A):
+
+               # app/models/label.py
+               from sqlalchemy import String, Index
+               from sqlalchemy.orm import Mapped, mapped_column
+               from .base import Base
+
+               class Label(Base):
+                   __tablename__ = "labels"
+
+                   address: Mapped[str] = mapped_column(String, primary_key=True)
+                   chain: Mapped[str] = mapped_column(String, nullable=False)
+                   entity_name: Mapped[str] = mapped_column(String, nullable=False)
+                   entity_type: Mapped[str] = mapped_column(String, nullable=False)
+                   source: Mapped[str] = mapped_column(String, nullable=False)
+                   confidence: Mapped[str] = mapped_column(String, default="high")
+                   updated_at: Mapped[str] = mapped_column(String, nullable=False)
+
+                   __table_args__ = (
+                       Index("idx_labels_chain_type", "chain", "entity_type"),
+                       Index("idx_labels_entity", "entity_name"),
+                   )
+
+  ORM-5  [ ] ALL schema changes go through Alembic migrations:
+               alembic revision --autogenerate -m "add labels table"
+               alembic upgrade head
+              NEVER modify a table by editing model + restarting. Always migrate.
+
+  ORM-6  [ ] Create app/models/__init__.py that imports ALL models:
+               from .label import Label
+               from .risk_score import RiskScore
+               from .cached_transaction import CachedTransaction
+               from .method_signature import MethodSignature
+               from .historical_price import HistoricalPrice
+               from .cluster import Cluster
+               from .investigation import Investigation
+               from .note import Note
+               from .audit_log import AuditLog
+              This ensures Alembic's autogenerate sees all tables.
+
+  ORM-7  [ ] All database queries use SQLAlchemy async session:
+               async with async_session() as session:
+                   result = await session.execute(
+                       select(Label).where(Label.address == address)
+                   )
+                   label = result.scalar_one_or_none()
+              NEVER: await db.execute("SELECT * FROM labels WHERE address = ?", (addr,))
+
+  ORM-8  [ ] The raw CREATE TABLE statements in this roadmap are DOCUMENTATION
+              ONLY — they show the intended schema. The AI must translate them
+              into SQLAlchemy models, not execute them as SQL.
+
+
+=========================================================================
+API SCHEMA CONTRACT / DATA DICTIONARY (mandatory: prevents field name drift)
+=========================================================================
+
+  ⚠️  VIBE-CODE GUARDRAIL: When the AI builds the backend, it names a field
+  tx_hash. When it builds the frontend later, it expects txHash. This mismatch
+  causes silent failures and hours of debugging.
+
+  SOLUTION: A master Data Dictionary that defines the EXACT field names used
+  in both Pydantic models (backend) AND TypeScript interfaces (frontend).
+  BOTH sides of the stack obey these names. No renaming. No camelCase
+  conversion. The API speaks snake_case. The frontend reads snake_case.
+
+  DD-1   [ ] Create docs/data_dictionary.md containing ALL types below.
+  DD-2   [ ] Create frontend/src/types/api.ts containing ALL TypeScript interfaces.
+  DD-3   [ ] The Pydantic models in app/models/schemas.py MUST match exactly.
+  DD-4   [ ] RULE: the API returns snake_case. The frontend reads snake_case.
+              Do NOT configure axios/fetch to auto-convert to camelCase.
+              This eliminates an entire class of mapping bugs.
+
+  --- Master Types (Backend: Pydantic / Frontend: TypeScript) ---
+
+  DD-5   [ ] NormalizedTx:
+
+              # Backend: app/models/schemas.py
+              class NormalizedTx(BaseModel):
+                  tx_hash: str
+                  chain: str
+                  from_address: str | None
+                  to_address: str | None
+                  value: str                       # raw wei/satoshi as string
+                  value_human: str                 # "1.5"
+                  value_usd_at_time: str | None    # "4231.50" or null
+                  decimals: int
+                  token: str                       # "ETH", "BTC", "USDT"
+                  timestamp: int                   # unix seconds
+                  block: int
+                  confirmations: int | None
+                  finalized: bool
+                  tx_type: str                     # "native"|"token"|"internal"|"contract"
+                  status: str                      # "success"|"failed"
+                  spam_score: str                  # "clean"|"suspected_spam"|"confirmed_spam"
+                  method_name: str | None          # "swapExactETHForTokens" or null
+                  inputs: list[TxInput] | None     # BTC only
+                  outputs: list[TxOutput] | None   # BTC only
+                  fee: str | None
+                  change_output: ChangeDetection | None
+
+              // Frontend: src/types/api.ts
+              interface NormalizedTx {
+                  tx_hash: string
+                  chain: string
+                  from_address: string | null
+                  to_address: string | null
+                  value: string
+                  value_human: string
+                  value_usd_at_time: string | null
+                  decimals: number
+                  token: string
+                  timestamp: number
+                  block: number
+                  confirmations: number | null
+                  finalized: boolean
+                  tx_type: 'native' | 'token' | 'internal' | 'contract'
+                  status: 'success' | 'failed'
+                  spam_score: 'clean' | 'suspected_spam' | 'confirmed_spam'
+                  method_name: string | null
+                  inputs: TxInput[] | null
+                  outputs: TxOutput[] | null
+                  fee: string | null
+                  change_output: ChangeDetection | null
+              }
+
+  DD-6   [ ] LookupResponse:
+
+              class LookupResponse(BaseModel):
+                  address: str
+                  chain: str
+                  transactions: list[NormalizedTx]
+                  total: int
+                  page: int
+                  per_page: int
+                  spam_filtered: int
+                  failed_filtered: int
+                  dust_filtered: int
+                  stats: AddressStats
+                  warnings: list[str]
+
+              interface LookupResponse {
+                  address: string
+                  chain: string
+                  transactions: NormalizedTx[]
+                  total: number
+                  page: number
+                  per_page: number
+                  spam_filtered: number
+                  failed_filtered: number
+                  dust_filtered: number
+                  stats: AddressStats
+                  warnings: string[]
+              }
+
+  DD-7   [ ] AddressStats:
+
+              class AddressStats(BaseModel):
+                  total_received: str
+                  total_sent: str
+                  balance: str
+                  balance_unconfirmed: str
+                  tx_count: int
+                  first_seen: int | None
+                  last_seen: int | None
+
+              interface AddressStats {
+                  total_received: string
+                  total_sent: string
+                  balance: string
+                  balance_unconfirmed: string
+                  tx_count: number
+                  first_seen: number | null
+                  last_seen: number | null
+              }
+
+  DD-8   [ ] TraceRequest / TraceJobResponse:
+
+              class TraceRequest(BaseModel):
+                  address: str
+                  chain: str
+                  direction: str                   # "forward" | "backward"
+                  max_hops: int
+                  min_value: str                   # raw value string
+                  trace_through_entities: bool
+                  entity_pruning_list: list[str]
+                  max_txs_per_node: int
+
+              class TraceJobResponse(BaseModel):
+                  job_id: str
+                  status: str                      # "queued"|"running"|"completed"|"failed"|"cancelled"
+                  stream_url: str
+
+              interface TraceRequest {
+                  address: string
+                  chain: string
+                  direction: 'forward' | 'backward'
+                  max_hops: number
+                  min_value: string
+                  trace_through_entities: boolean
+                  entity_pruning_list: string[]
+                  max_txs_per_node: number
+              }
+
+              interface TraceJobResponse {
+                  job_id: string
+                  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+                  stream_url: string
+              }
+
+  DD-9   [ ] SSE Delta Events (TypeScript only — backend sends JSON):
+
+              interface SSENodeDiscovered {
+                  address: string
+                  label: string | null
+                  risk: string | null
+                  hop: number
+              }
+
+              interface SSEEdgeDiscovered {
+                  from: string
+                  to: string
+                  value: string
+                  tx_hash: string
+                  token: string
+                  timestamp: number
+              }
+
+              interface SSEProgress {
+                  hop: number
+                  max_hops: number
+                  nodes_found: number
+                  edges_found: number
+                  api_calls_used: number
+                  api_calls_limit: number
+              }
+
+              interface SSECompleted {
+                  total_nodes: number
+                  total_edges: number
+                  trace_time_ms: number
+                  pruned_at: PrunedNode[]
+                  sampling: SampledNode[]
+              }
+
+  DD-10  [ ] LabelInfo / RiskScore / ExposureReport:
+
+              class LabelInfo(BaseModel):
+                  address: str
+                  chain: str
+                  entity_name: str
+                  entity_type: str
+                  source: str
+                  confidence: str
+
+              class RiskScore(BaseModel):
+                  score: str                       # "LOW"|"MEDIUM"|"HIGH"|"SEVERE"
+                  reasons: list[RiskReason]
+                  computed_at: str
+                  stale: bool
+
+              class RiskReason(BaseModel):
+                  rule: str
+                  detail: str
+                  severity: str
+
+              // Matching TypeScript interfaces for all of the above
+              interface LabelInfo {
+                  address: string
+                  chain: string
+                  entity_name: string
+                  entity_type: string
+                  source: string
+                  confidence: string
+              }
+
+              interface RiskScore {
+                  score: 'LOW' | 'MEDIUM' | 'HIGH' | 'SEVERE'
+                  reasons: RiskReason[]
+                  computed_at: string
+                  stale: boolean
+              }
+
+              interface RiskReason {
+                  rule: string
+                  detail: string
+                  severity: string
+              }
+
+  DD-11  [ ] PriceEnrichRequest / PriceEnrichResponse:
+
+              class PriceEnrichRequest(BaseModel):
+                  transactions: list[PriceQuery]
+
+              class PriceQuery(BaseModel):
+                  token: str
+                  date: str                        # "2024-03-15"
+                  tx_hash: str
+
+              class PriceEnrichResponse(BaseModel):
+                  prices: dict[str, str]           # "ethereum:2024-03-15" → "3421.50"
+                  pending: int
+                  cached: int
+
+              interface PriceEnrichRequest {
+                  transactions: { token: string; date: string; tx_hash: string }[]
+              }
+
+              interface PriceEnrichResponse {
+                  prices: Record<string, string>
+                  pending: number
+                  cached: number
+              }
+
+  DD-12  [ ] Create frontend/src/api/client.ts:
+              - Single file containing ALL API call functions
+              - Every function is typed with the interfaces above
+              - Example:
+                  export async function lookupAddress(
+                    chain: string, address: string
+                  ): Promise<LookupResponse> {
+                    const res = await fetch(`${API_BASE}/api/lookup/${chain}/${address}`)
+                    return res.json()
+                  }
+              - TanStack Query hooks call these functions as queryFn
+              - This is the SINGLE SOURCE OF TRUTH for API communication
+
+
+=========================================================================
+DATABASE SETUP (critical: do this before any DB code)
+=========================================================================
+
+  ⚠️  BUG PREVENTION: SQLite + async FastAPI concurrency
+
+  SQLite locks the entire database file during writes. Concurrent async
+  reads and writes (e.g., background label sync running while users execute
+  traces) will trigger "OperationalError: database is locked".
+
+  DB-1   [ ] Install aiosqlite as the async SQLite driver
+  DB-2   [ ] In app/db.py, configure the connection with:
+               - PRAGMA journal_mode=WAL  (Write-Ahead Logging — allows
+                 concurrent readers during writes)
+               - PRAGMA busy_timeout=5000  (wait 5s before failing on lock)
+               - PRAGMA synchronous=NORMAL  (safe with WAL, better perf)
+  DB-3   [ ] Use SQLAlchemy async engine with aiosqlite:
+               create_async_engine("sqlite+aiosqlite:///./chainscope.db")
+  DB-4   [ ] Verify: run a write (label insert) and a read (address lookup)
+             simultaneously in tests to confirm no locking errors
+  DB-5   [ ] Add a note in config.py: when DATABASE_URL starts with
+             "postgresql", skip the SQLite PRAGMAs
+
+
+=========================================================================
+PRECISION STRATEGY (critical: apply to all steps)
+=========================================================================
+
+  ⚠️  BUG PREVENTION: Floating point precision loss
+
+  EVM networks denominate in Wei (10^18). Bitcoin uses satoshis (10^8).
+  Python float and JavaScript Number will silently drop precision, causing
+  corrupted balance calculations and broken min-amount filters.
+
+  PREC-1  [ ] Backend (models/schemas.py):
+                - All value fields must be Python Decimal, not float
+                - Store raw values as strings in JSON responses:
+                    "value": "1500000000000000000"  (wei as string)
+                    "value_human": "1.5"            (display only)
+                    "decimals": 18
+                - Never do arithmetic on float-cast blockchain values
+
+  PREC-2  [ ] Backend (providers/*.py):
+                - Parse all API response values as Decimal immediately:
+                    from decimal import Decimal
+                    value = Decimal(raw_response["value"])
+                - Never: value = float(raw_response["value"])
+
+  PREC-3  [ ] Frontend (utils/formatters.js):
+                - Use BigInt for all raw value comparisons and arithmetic
+                - Use ethers.js parseUnits/formatUnits for human display
+                - The min-amount slider must compare BigInt values, not floats
+
+  PREC-4  [ ] Frontend (components/TxTable.jsx):
+                - Sort-by-amount must sort on raw BigInt, not display string
+                - Balance calculations: sum BigInt, format once for display
+
+  PREC-5  [ ] Add a test: confirm that 0.1 + 0.2 precision edge case
+               doesn't corrupt a balance calculation
+
+  ⚠️  BUG PREVENTION: Recharts / D3.js vs. BigInt Incompatibility
+
+  PREC-6  [ ] Recharts relies on D3.js internally for axis domain calculation
+               and scale factors. D3 performs math using standard JavaScript
+               Number types and will THROW FATAL RENDERING ERRORS if passed
+               BigInt objects in data arrays.
+
+               RULE: BigInt is for LEDGER MATH (balances, comparisons, sorting,
+               filtering). Standard Number float is for CHART RENDERING.
+
+               In every Recharts data array, explicitly cast BigInt → Number:
+                 const chartData = transactions.map(tx => ({
+                   ...tx,
+                   amount: Number(BigInt(tx.value) / BigInt(10 ** tx.decimals)),
+                   // Precision loss is visually imperceptible on a pixel chart.
+                   // A 0.0000000001 ETH rendering error is sub-pixel.
+                 }))
+
+               Apply this in: TimelineChart.jsx, BalanceChart.jsx,
+               StatsPanel.jsx, ExposureChart.jsx — anywhere Recharts consumes
+               value data. NEVER use these Number-cast values for balance
+               calculations, comparisons, or exports.
+
+  PREC-7  [ ] Create a utility in formatters.js:
+               function bigIntToChartNumber(rawValue, decimals) {
+                 return Number(BigInt(rawValue) / BigInt(10 ** Math.max(decimals - 6, 0)))
+                        / (10 ** Math.min(decimals, 6))
+               }
+               This preserves 6 decimal places of precision — more than enough
+               for any chart axis — while safely returning a Number type.
+
+  PREC-8  [ ] Test: render a BalanceChart with BigInt values, verify no crash
+               and axis labels display correctly
+
+
+=========================================================================
+DATA FINALITY STRATEGY (critical: apply to all caching)
+=========================================================================
+
+  ⚠️  BUG PREVENTION: Chain Reorganizations & Data Finality
+
+  Since the tool uses public APIs and not full nodes, it is vulnerable to
+  chain reorganizations. A transaction may appear as "Success" in an API
+  response but get rolled back 60 seconds later when the chain reorgs.
+  If you cache that transaction permanently, your DB now contains ghost data.
+
+  FIN-1  [ ] Add confirmations field to NormalizedTx schema:
+               confirmations: int | None
+               Block depth = (current_block - tx_block). If the API doesn't
+               return this directly, compute it from the chain's latest block.
+
+  FIN-2  [ ] Define finality thresholds (configurable via .env):
+               ETH_FINALITY_BLOCKS = 64    (post-Merge finality: ~13 minutes)
+               BTC_FINALITY_BLOCKS = 6     (~60 minutes)
+
+  FIN-3  [ ] Caching policy:
+               - Transactions with confirmations >= finality threshold → cache
+                 permanently in DB (safe, will not reorg).
+               - Transactions with confirmations < threshold → return to frontend
+                 but mark as "unconfirmed". Do NOT write to permanent cache.
+               - Frontend: show ⏳ icon on unconfirmed txs with tooltip:
+                 "This transaction has 3/64 confirmations. It may be reversed."
+
+  FIN-4  [ ] For Etherscan: the API does not return a confirmations field directly.
+               Compute: fetch the latest block number once per request batch
+               (GET ?module=proxy&action=eth_blockNumber), then:
+               confirmations = latest_block - tx.blockNumber
+
+  FIN-5  [ ] For Blockstream: the API returns block height and chain tip.
+               confirmations = chain_tip - tx.block_height
+
+  FIN-6  [ ] Balance calculations MUST include unconfirmed txs (they're real for now)
+               but StatsHeader should show: "Balance: 1.5 ETH (0.2 ETH unconfirmed)"
+
+  FIN-7  [ ] Test: verify that a transaction at block N with only 2 confirmations
+               is returned but NOT written to permanent cache
+
+
+=========================================================================
+DUST FLOOR STRATEGY (critical: apply at provider level)
+=========================================================================
+
+  ⚠️  BUG PREVENTION: Dust Attacks Bypassing Spam Filter
+
+  The spam filter (Step 1D) catches zero-value transfers, but "dust attacks"
+  send tiny amounts (1 satoshi, 0.000001 ETH) that are technically non-zero.
+  These bypass the zero-value check and can overwhelm the BFS trace engine
+  with thousands of noise transactions, burning API quota on junk.
+
+  DUST-1  [ ] Define configurable dust floors in .env:
+                DUST_FLOOR_ETH_WEI = 10000000000000000    (0.01 ETH)
+                DUST_FLOOR_BTC_SAT = 10000                (0.0001 BTC)
+                # These are PROVIDER-LEVEL floors, applied before data enters
+                # the processing pipeline. Different from the user-facing
+                # "min_value" filter in the trace engine.
+
+  DUST-2  [ ] Implement in providers/base.py as a post-fetch filter:
+                def _apply_dust_floor(self, txs: list[NormalizedTx]) -> list[NormalizedTx]:
+                    floor = config.dust_floor[self.chain_id()]
+                    kept = [tx for tx in txs if Decimal(tx.value) >= floor]
+                    dropped = len(txs) - len(kept)
+                    if dropped > 0:
+                        logger.info(f"Dust floor: dropped {dropped} txs below {floor}")
+                    return kept
+
+  DUST-3  [ ] Apply AFTER normalization but BEFORE returning to the router.
+                This ensures dust never enters the DB cache, the BFS queue,
+                or the frontend. The spam_filter (zero-value) runs first,
+                then the dust floor catches tiny-but-nonzero transfers.
+
+  DUST-4  [ ] Log dust-filtered count in response metadata:
+                { ..., "dust_filtered": 147 }
+                Frontend shows: "147 dust transactions hidden (below 0.01 ETH)"
+
+  DUST-5  [ ] Do NOT apply dust floor to the trace engine's min_value filter.
+                The trace min_value is user-controlled and intentional.
+                The dust floor is a system-level noise gate.
+
+  DUST-6  [ ] Test: send a lookup for a heavily dusted address, verify that
+               sub-floor transactions are excluded from results AND from DB cache
+
+
+=========================================================================
+OUTBOUND RATE LIMITING STRATEGY (critical: apply to all providers)
+=========================================================================
+
+  ⚠️  ARCHITECTURAL BOTTLENECK: Proactive vs. Reactive Rate Limiting
+
+  The naive approach — retry with backoff on 429 — fails under concurrency.
+  If multiple users or batch processes fire lookups simultaneously, they will
+  all slam into Etherscan's 5 calls/sec ceiling, triggering cascading 429
+  errors and exponential backoffs. This leads to API ban-hammering.
+
+  SOLUTION: A proactive, global Token Bucket that throttles outbound requests
+  BEFORE they are sent. A 429 should practically never be triggered.
+
+  RATE-1  [ ] Install aiolimiter (async token bucket implementation)
+
+  RATE-2  [ ] Create app/outbound_limiter.py:
+
+                from aiolimiter import AsyncLimiter
+
+                LIMITERS = {
+                  "etherscan":   AsyncLimiter(4.5, 1),   # 4.5 req/sec (limit is 5)
+                  "bscscan":     AsyncLimiter(4.5, 1),
+                  "polygonscan": AsyncLimiter(4.5, 1),
+                  "blockstream": AsyncLimiter(8.0, 1),   # ~10 req/s soft limit
+                  "helius":      AsyncLimiter(8.0, 1),   # 10 req/s limit
+                  "trongrid":    AsyncLimiter(12.0, 1),  # 15 req/s limit
+                  "coingecko":   AsyncLimiter(0.4, 1),   # ~25/min = 0.4/sec
+                  # 4byte: NOT HERE — uses bulk download, not live API (see Step 1H)
+                }
+
+  RATE-3  [ ] In providers/base.py, wrap every outbound HTTP call:
+
+                async def _rate_limited_request(self, provider_name, url, params):
+                    limiter = LIMITERS[provider_name]
+                    async with limiter:
+                        return await self._http_client.get(url, params=params)
+
+  RATE-4  [ ] The @retry decorator now ONLY handles genuine errors (5xx, timeouts),
+              NOT 429s. A 429 should be treated as a bug — it means the limiter
+              is misconfigured or the rate limit changed.
+              Log 429s as warnings: "WARNING: 429 from Etherscan — limiter may be too fast"
+
+  RATE-5  [ ] Add monitoring: GET /api/admin/rate-status
+              Returns: { "etherscan": { "requests_last_min": 42, "limit": 270, "429_count": 0 } }
+
+  RATE-6  [ ] Make rates configurable via .env
+
+  RATE-7  [ ] Test: fire 20 concurrent requests through the limiter, verify
+              they serialize to ≤4.5/sec (measure wall clock time ≥ 4 seconds).
+
+
+=========================================================================
+INBOUND RATE LIMITING STRATEGY (protecting your app)
+=========================================================================
+
+  INBOUND-1  [ ] Install slowapi
+  INBOUND-2  [ ] Configure in app/rate_limiter.py:
+                    - POST /api/trace: 5 requests/min/IP
+                    - GET /api/lookup/*: 30 requests/min/IP
+                    - POST /api/labels/batch: 20 requests/min/IP
+  INBOUND-3  [ ] Return 429 with: { "error": "rate_limited", "retry_after": N }
+  INBOUND-4  [ ] Frontend: show toast "You're sending requests too quickly."
+
+
+=========================================================================
+ERROR HANDLING STRATEGY (apply to all steps)
+=========================================================================
+
+  ERR-1  [ ] Outbound: Retry on 5xx and timeouts ONLY (not 429)
+  ERR-2  [ ] Unified ProviderError class
+  ERR-3  [ ] Graceful degradation: partial results + warnings array
+  ERR-4  [ ] Frontend: toast, banner, full-screen error states
+
+
+=========================================================================
+TEST FIXTURES & API MOCKING
+=========================================================================
+
+  TEST-1  [ ] Pick and document real seed addresses in docs/test_fixtures.md:
+                Bitcoin:
+                  - Binance hot wallet (high volume)
+                  - Known OFAC-sanctioned BTC address
+                  - Small personal wallet (~10 txs, manually verifiable)
+                  - Heavily dusted address (for dust floor testing)
+                  - Address involved in a peeling chain (for Step 4 feature)
+                Ethereum:
+                  - Binance deposit/hot wallet
+                  - Tornado Cash router contract
+                  - Known OFAC-sanctioned ETH address
+                  - Normal DeFi user (Uniswap + Aave activity)
+                  - Address with many spam/poisoning txs (for filter testing)
+                  - Address with failed transactions (for status testing)
+                  - Contract with heavy internal tx activity (for txlistinternal test)
+
+  TEST-2  [ ] Hardcode as "Example lookups" buttons in frontend UI
+  TEST-3  [ ] Install vcrpy, create conftest.py, record cassettes
+  TEST-4  [ ] Verify all tests pass offline
+  TEST-5  [ ] Makefile target: `make record-cassettes`
+
+
+=========================================================================
+PRIVACY NOTE & SCALING FORESIGHT
+=========================================================================
+
+  - Phase 1 (now): Accept the tradeoff, move fast.
+  - Phase 2 (later): Proxy all requests through your backend.
+  - Phase 3 (privacy): Self-hosted indexers (Blockbook, Erigon).
+  - Phase 4 (database): Neo4j/Memgraph for native graph traversal.
+
+
+=========================================================================
+STEP-BY-STEP BUILD PLAN
+=========================================================================
+
+
+STEP 1 — Address Input + Basic Tx List (UTXO & Account Aware)
+--------------------------------------------------------------
+Goal: User pastes a BTC or ETH address, sees a list of transactions.
+
+--- 1A: Frontend Shell ---
+
+  1A-1  [ ] Create React app with Vite (TypeScript template):
+              npm create vite@latest frontend -- --template react-ts
+  1A-2  [ ] Install Tailwind CSS
+  1A-3  [ ] Install TanStack Query: npm install @tanstack/react-query @tanstack/react-query-devtools
+  1A-4  [ ] Install Zustand: npm install zustand
+  1A-5  [ ] Create App.tsx with QueryClientProvider (see SM-2) + centered layout
+  1A-6  [ ] Create src/types/api.ts with ALL TypeScript interfaces (see DD-2 through DD-11)
+  1A-7  [ ] Create src/api/client.ts with ALL typed fetch functions (see DD-12)
+  1A-8  [ ] Create src/stores/traceSessionStore.ts (see SM-8)
+  1A-9  [ ] Create src/stores/filterStore.ts (see SM-9)
+  1A-10 [ ] Build AddressInput.tsx (input + button + spinner)
+  1A-11 [ ] Build addressValidator.ts (BTC/ETH regex + detectChain)
+  1A-12 [ ] Wire AddressInput to backend via TanStack Query hook:
+              const { data, isLoading, error } = useQuery({
+                queryKey: ['lookup', chain, address],
+                queryFn: () => lookupAddress(chain, address),  // from api/client.ts
+                enabled: !!submittedAddress,
+              })
+              NO raw fetch() in useEffect(). Ever.
+  1A-13 [ ] Build ExampleLookups.tsx (fixture address buttons)
+
+--- 1B: Backend Skeleton ---
+
+  1B-1  [ ] Create FastAPI app in main.py
+  1B-2  [ ] Configure CORS middleware
+  1B-3  [ ] Create config.py with Pydantic Settings
+  1B-4  [ ] Create db.py with SQLAlchemy async engine + aiosqlite + WAL mode:
+              - engine = create_async_engine(config.DATABASE_URL)
+              - async_session = async_sessionmaker(engine)
+              - Apply WAL PRAGMAs via event listener (see DATABASE SETUP)
+  1B-5  [ ] Create models/base.py with SQLAlchemy DeclarativeBase (see ORM-2)
+  1B-6  [ ] Create models/schemas.py with ALL Pydantic models (see DD-5 through DD-11)
+              These are the API contract — must match frontend/src/types/api.ts exactly.
+  1B-7  [ ] Initialize Alembic: alembic init alembic
+              Configure alembic/env.py to use async engine and import all models.
+  1B-8  [ ] Create errors.py with ProviderError class
+  1B-9  [ ] Create rate_limiter.py (slowapi — inbound)
+  1B-10 [ ] Create outbound_limiter.py (aiolimiter — global token buckets)
+  1B-11 [ ] Create providers/base.py with ChainProvider ABC
+  1B-12 [ ] Implement _rate_limited_request in base.py (global token bucket gate)
+  1B-13 [ ] Implement @retry decorator (5xx/timeouts only, NOT 429)
+  1B-14 [ ] Implement _apply_dust_floor() in base.py (see DUST FLOOR STRATEGY)
+             Applied after normalization, before return. Drops sub-threshold txs.
+
+--- 1C: Bitcoin Provider ---
+
+  1C-1  [ ] Create providers/bitcoin.py implementing ChainProvider
+  1C-2  [ ] Fetch from Blockstream: GET /api/address/{address}/txs
+  1C-3  [ ] Handle Blockstream pagination (last_seen_txid)
+  1C-4  [ ] All calls through _rate_limited_request("blockstream", ...)
+  1C-5  [ ] Parse UTXO model with precision (satoshi as Decimal)
+  1C-6  [ ] Compute confirmations: chain_tip - tx.block_height
+  1C-7  [ ] Apply dust floor before returning
+
+--- 1D: Ethereum Provider ---
+
+  1D-1  [ ] Create providers/ethereum.py implementing ChainProvider
+  1D-2  [ ] All calls through _rate_limited_request("etherscan", ...)
+  1D-3  [ ] Fetch ALL THREE endpoints: txlist, tokentx, txlistinternal
+
+  ⚠️  BUG PREVENTION: Etherscan Pagination Hard Limit
+
+  1D-4  [ ] Use block-based pagination (startblock/endblock), NOT page/offset.
+              Etherscan hard-caps at 10,000 records via page/offset.
+
+  1D-5  [ ] Implement _paginate_by_block() as reusable method
+
+  ⚠️  BUG PREVENTION: txlistinternal Pagination Quirks
+
+  1D-6  [ ] The txlistinternal endpoint is notoriously unreliable for high-traffic
+              contracts. It sometimes:
+                - Returns empty results for block ranges that DO contain data
+                - Hits stricter rate limits than txlist/tokentx
+                - Returns "Max rate limit reached" even within your global budget
+              Handle this:
+                - If a block-range page returns empty AND you haven't reached the
+                  chain tip, retry with a SMALLER block range (binary search).
+                - If txlistinternal returns a rate error, back off for 2s and retry
+                  (this is separate from the global 429 handling — it's API-specific).
+                - If txlistinternal fails entirely after 3 retries, return partial
+                  results with a warning: "Internal transactions unavailable for
+                  this address. Showing native + token transfers only."
+                - Never let txlistinternal failure crash the entire lookup.
+
+  1D-7  [ ] Merge all three endpoint results into unified timeline, sort by timestamp
+
+  1D-8  [ ] Parse isError field: "0" → success, "1" → failed
+
+  ⚠️  BUG PREVENTION: Failed Transaction Handling
+
+  1D-9  [ ] status: "success" | "failed" on every tx. Exclude failed from stats.
+
+  ⚠️  BUG PREVENTION: Address Poisoning Filter
+
+  1D-10 [ ] Create services/spam_filter.py (zero-value ERC-20 check)
+  1D-11 [ ] Apply spam filter, then dust floor, in that order
+  1D-12 [ ] Store flagged txs in DB for audit trail
+  1D-13 [ ] Precision: all wei as Decimal immediately
+  1D-14 [ ] Compute confirmations: fetch latest block (eth_blockNumber), then
+              confirmations = latest_block - tx.blockNumber
+
+--- 1E: BTC Change Detection ---
+
+  ⚠️  BUG PREVENTION: Flawed Change Heuristics
+
+  The naive "largest output to known address" is incorrect. Change goes to
+  NEW addresses. Additionally, "script type mismatch" is increasingly
+  unreliable in the SegWit/Taproot era — modern wallets (Ledger, Trezor)
+  routinely mix script types (spending from 1... to bc1... change).
+
+  1E-1  [ ] Create services/change_detect.py with REPRIORITIZED heuristics:
+
+              def detect_change_output(tx) → ChangeDetection | None:
+
+              PRIORITY 1 — First-time-seen address (STRONGEST signal):
+                If one output goes to an address with zero prior transaction
+                history, it is very likely a freshly generated change address.
+                This is the strongest heuristic because wallets generate new
+                change addresses by default for privacy.
+                Implementation: check cache first, then optionally make one
+                API call to Blockstream GET /api/address/{addr} and check
+                tx_count == 0. Cache the result.
+                IMPORTANT: This is now the primary heuristic, not a supplement.
+
+              PRIORITY 2 — Round number analysis (GOOD signal):
+                Payments tend to be round numbers (1.0, 0.5, 0.001 BTC).
+                Change is the messy remainder (0.04837291 BTC).
+                If exactly one output is non-round and the rest are round,
+                the non-round output is likely change.
+
+              PRIORITY 3 — Script type matching (WEAK signal, use with caution):
+                If inputs and one output share the same script type, that output
+                MAY be change. BUT: modern wallets mix types freely (SegWit →
+                Taproot change). Only use this as a TIE-BREAKER when Heuristics
+                1 and 2 are inconclusive. Never rely on it alone.
+
+              Confidence scoring:
+                Heuristic 1 match alone         → HIGH confidence
+                Heuristic 1 + 2 agree           → HIGH confidence
+                Heuristic 2 match alone          → MEDIUM confidence
+                Heuristic 3 match alone          → LOW confidence (barely useful)
+                Conflicting signals              → LOW confidence
+                Return: { output_index, confidence, reasons: [], heuristics_used: [] }
+
+  1E-2  [ ] Apply change detection to all BTC transactions
+  1E-3  [ ] Include change_detection field in response schema
+
+--- 1F: Normalization & Response Schema ---
+
+  1F-1  [ ] Create models/schemas.py:
+
+              class NormalizedTx(BaseModel):
+                tx_hash: str
+                chain: str
+                from_address: str | None
+                to_address: str | None
+                value: str                     # Raw (wei/satoshi) as string
+                value_human: str               # Display ("1.5 ETH")
+                value_usd_at_time: str | None  # Historical USD value (see HIST PRICE)
+                decimals: int
+                token: str
+                timestamp: int
+                block: int
+                confirmations: int | None      # NEW: data finality
+                finalized: bool                # confirmations >= threshold
+                tx_type: str
+                status: str
+                spam_score: str
+                method_name: str | None        # NEW: decoded function name (EVM)
+                inputs: list | None            # BTC only
+                outputs: list | None           # BTC only
+                fee: str | None
+                change_output: ChangeDetection | None
+
+              class LookupResponse(BaseModel):
+                address: str
+                chain: str
+                transactions: list[NormalizedTx]
+                total: int
+                page: int
+                per_page: int
+                spam_filtered: int
+                failed_filtered: int
+                dust_filtered: int             # NEW
+                stats: AddressStats
+                warnings: list[str]
+
+              class AddressStats(BaseModel):
+                total_received: str
+                total_sent: str
+                balance: str
+                balance_unconfirmed: str        # NEW: txs below finality threshold
+                tx_count: int
+                first_seen: int | None
+                last_seen: int | None
+
+  1F-2  [ ] Create router: GET /api/lookup/{chain}/{address}
+              Pipeline: validate → fetch (rate-limited) → spam filter → dust floor
+              → change detect (BTC) → compute stats (exclude failed/spam/dust)
+              → compute confirmations → return
+
+--- 1F-3: Transaction Caching with Finality ---
+
+  1F-3  [ ] Create app/models/cached_transaction.py (SQLAlchemy model — see ORM-3).
+              Schema (implement as SQLAlchemy Mapped columns, NOT raw SQL):
+              CREATE TABLE cached_transactions (
+                tx_hash TEXT,
+                chain TEXT,
+                block INT,
+                data TEXT,           -- full NormalizedTx JSON
+                finalized BOOLEAN DEFAULT FALSE,
+                cached_at TEXT,
+                PRIMARY KEY (tx_hash, chain)
+              )
+
+  1F-4  [ ] On lookup: check cache first. If tx exists and finalized=true, use cache.
+              If tx exists but finalized=false, re-fetch to update confirmations.
+              If confirmations now >= threshold, SET finalized=true.
+
+  1F-5  [ ] NEVER write a transaction to cache with finalized=true unless
+              confirmations >= config.finality[chain].
+              Unfinalized txs can be cached temporarily (TTL: 10 minutes) to
+              avoid redundant API calls within a single investigation session.
+
+--- 1G: Frontend Results Display ---
+
+  1G-1  [ ] Build TxTable.jsx (sortable, paginated, with all badges)
+  1G-2  [ ] Build SpamTag.jsx (grey "SPAM?")
+  1G-3  [ ] Build FailedTag.jsx (red strikethrough "FAILED")
+  1G-4  [ ] Build UnconfirmedTag.jsx: ⏳ icon with "3/64 confirmations" tooltip
+  1G-5  [ ] Filter toggles: show spam, show failed, show dust (all default OFF)
+              Show counts: "23 spam · 4 failed · 147 dust hidden"
+  1G-6  [ ] Build StatsHeader.jsx: balance with unconfirmed breakdown
+              "Balance: 1.5 ETH (0.2 ETH unconfirmed)"
+  1G-7  [ ] Build formatters.js (BigInt, hash truncation, timestamps)
+  1G-8  [ ] Loading state: skeleton rows. Empty state. Error state (ErrorBanner.jsx)
+  1G-9  [ ] If historical USD price available (loaded async via POST /api/prices/enrich),
+              show as secondary column in TxTable:
+              "1.5 ETH ($4,231 at time of tx)"
+              While loading: show "—" with subtle spinner
+              On pagination: trigger new enrich call for visible page's dates
+
+--- 1H: Method ID Decoding (EVM) ---
+
+  NEW FEATURE: Instead of showing "Contract Call" for EVM internal
+  transactions, decode the function signature to show human-readable names
+  like "Swap ETH for USDT (Uniswap V3)".
+
+  ⚠️  BUG PREVENTION: 4byte API "N+1" Query Problem (Timeout Risk)
+
+  The 4byte.directory API does NOT support bulk queries — you cannot send
+  an array of 50 selectors in one request. If a heavy DeFi contract has 40
+  unknown function selectors, that's 40 sequential HTTP requests. At the
+  token bucket limit of 2.0 req/s, this stalls the lookup for 20 seconds,
+  causing a timeout.
+
+  SOLUTION: Do not hit the live 4byte API during the lookup pipeline.
+  The entire 4byte signature database is remarkably small (~5MB as CSV).
+  Download it once via the background worker, and all lookups become
+  instant local SQLite queries.
+
+  1H-0  [ ] BULK DOWNLOAD the 4byte signature database:
+              - Source: https://www.4byte.directory/api/v1/signatures/?format=csv
+                OR a community GitHub mirror (e.g., sam-building/4byte-database)
+              - Download the full CSV (~5MB, ~800k signatures)
+              - Import into the local method_signatures table
+              - Schedule: run in jobs/label_sync.py alongside the daily label sync
+              - This replaces ALL live API queries for method decoding.
+
+  1H-1  [ ] Create services/method_decoder.py:
+              - Extract first 4 bytes of tx input data (the method selector)
+              - Look up against LOCAL method_signatures table ONLY
+                (no live HTTP call — the table was populated by 1H-0)
+              - Falls back to "Unknown method (0xabcd1234)" if no local match
+              - Zero network latency. 40 selectors = 40 local DB reads = <10ms.
+
+  1H-2  [ ] Create app/models/method_signature.py (SQLAlchemy model — see ORM-3).
+              Schema (implement as SQLAlchemy Mapped columns, NOT raw SQL):
+              CREATE TABLE method_signatures (
+                selector TEXT PRIMARY KEY,    -- "0xabcd1234"
+                name TEXT,                    -- "swapExactETHForTokens(uint256,address[],address,uint256)"
+                short_name TEXT,              -- "Swap ETH for Tokens" (derived, nullable)
+                source TEXT,                  -- "4byte_bulk" | "manual"
+                cached_at TEXT
+              )
+
+  1H-3  [ ] Batch decode: after fetching txs, collect all unique method selectors,
+              batch-lookup against the LOCAL table. No live API calls. No rate limit.
+              If the table hasn't been populated yet (first run before sync job),
+              return "Unknown method" for all — never block on a live download.
+
+  1H-4  [ ] REMOVE 4byte from outbound_limiter.py — it is no longer needed.
+              The 4byte API is only used by the daily bulk download job, which
+              runs once and is not latency-sensitive.
+
+  1H-5  [ ] Add method_name field to NormalizedTx schema (already in 1F-1 above)
+
+  1H-6  [ ] Frontend: in TxTable, show decoded method name in "Type" column:
+              Instead of "contract_call" → "Swap ETH→USDT (Uniswap V3)"
+              In TxDetail: show full function signature + decoded parameters
+              (parameter decoding is optional / future — name alone is valuable)
+
+  1H-7  [ ] Test: verify known Uniswap swap tx decodes to correct function name
+  1H-8  [ ] Test: unknown method shows fallback "Unknown (0xabcd...)"
+  1H-9  [ ] Test: lookup with 40 unique selectors completes in <100ms (local only)
+  1H-10 [ ] Test: if method_signatures table is empty, all methods return "Unknown"
+              (no crash, no stall, no live API call)
+
+--- 1I: Historical Price at Time of Transaction ---
+
+  NEW FEATURE: Show what a transaction was worth in USD at the time it
+  happened, not today. Critical for forensics: "The thief moved $50,000 in
+  2022" is more meaningful than "The thief moved 30 ETH (currently $X)."
+
+  ⚠️  BUG PREVENTION: CoinGecko Rate Limit vs. Initial Load Timeout
+
+  The CoinGecko historical endpoint token bucket is set to 0.15 req/s.
+  If an address has transactions spanning 20 unique dates, fetching all
+  prices would take 20 / 0.15 = 133 seconds. This would hard-timeout
+  the initial GET /api/lookup/ request.
+
+  SOLUTION: DECOUPLE historical price fetching from the initial lookup.
+  The lookup returns immediately with value_usd_at_time: null. Prices
+  are loaded asynchronously by the frontend for only the visible page.
+
+  1I-1  [ ] Create services/price_history.py:
+              - CoinGecko API: /api/v3/coins/{id}/history?date={dd-mm-yyyy}
+              - Returns price in USD for a given token on a given date
+              - Batch by date: 50 txs on the same day = one API call
+
+  1I-2  [ ] Create app/models/historical_price.py (SQLAlchemy model — see ORM-3).
+              Schema (implement as SQLAlchemy Mapped columns, NOT raw SQL):
+              CREATE TABLE historical_prices (
+                token TEXT,          -- "ethereum", "bitcoin"
+                date TEXT,           -- "2024-03-15"
+                price_usd TEXT,      -- Decimal as string
+                PRIMARY KEY (token, date)
+              )
+
+  1I-3  [ ] DO NOT fetch historical prices during GET /api/lookup/{chain}/{address}.
+              The lookup endpoint returns value_usd_at_time: null for all transactions.
+              This ensures the initial load is fast (<2s).
+
+  1I-4  [ ] Create a SEPARATE endpoint for async price enrichment:
+              POST /api/prices/enrich
+              Request body:
+              {
+                transactions: [
+                  { token: "ethereum", date: "2024-03-15", tx_hash: "0x..." },
+                  { token: "ethereum", date: "2024-03-15", tx_hash: "0x..." },
+                  { token: "ethereum", date: "2024-03-16", tx_hash: "0x..." }
+                ]
+              }
+              Response:
+              {
+                prices: {
+                  "ethereum:2024-03-15": "3421.50",
+                  "ethereum:2024-03-16": "3389.12"
+                },
+                pending: 0,    // dates still being fetched (queued behind limiter)
+                cached: 2      // dates served from cache
+              }
+
+              The endpoint:
+              1. Deduplicates by (token, date) — 50 txs on same day = 1 API call
+              2. Checks cache first (most dates will be cached after first use)
+              3. For cache misses: queues CoinGecko requests through the global
+                 token bucket at 0.15 req/s
+              4. Returns IMMEDIATELY with whatever is cached. For pending dates,
+                 returns prices: {} with pending: N.
+
+  1I-5  [ ] Frontend async enrichment pattern in TxTable.jsx:
+              - On initial load: render table with "—" in USD column
+              - After table renders: call POST /api/prices/enrich with only the
+                transactions currently visible on the paginated page (~50 txs)
+              - On response: update USD values in-place (React state merge)
+              - On pagination: call enrich again for the new page's dates
+              - Show subtle loading spinner in USD column while pending
+              - After first page load, most subsequent pages will be instant
+                (dates already cached from previous calls)
+
+  1I-6  [ ] StatsHeader: show total volume in USD (historical)
+              - Compute only from transactions that have prices loaded
+              - Show: "Total received: 45.2 ETH (~$134,500 at time of transactions)"
+              - While prices are still loading: "Total received: 45.2 ETH (calculating USD...)"
+
+  1I-7  [ ] Rate limit: CoinGecko historical is the tightest bottleneck (0.15/s).
+              Cache aggressively — prices for past dates NEVER change.
+              After the first investigation of a date range, all subsequent
+              lookups in that range are instant from cache.
+
+  1I-8  [ ] Test: verify initial lookup returns null for USD values (fast)
+  1I-9  [ ] Test: verify POST /api/prices/enrich returns cached prices instantly
+  1I-10 [ ] Test: verify cache miss triggers CoinGecko call through rate limiter
+  1I-11 [ ] Test: verify frontend renders "—" then updates to "$X" asynchronously
+
+--- 1J: Integration & Testing ---
+
+  1J-1  [ ] Wire frontend → backend: full lookup flow end-to-end
+  1J-2  [ ] Test each fixture address
+  1J-3  [ ] Test ETH with >10k txs: block-based pagination works
+  1J-4  [ ] Test spam filtering (zero-value)
+  1J-5  [ ] Test dust floor (tiny-but-nonzero values excluded)
+  1J-6  [ ] Test failed txs show as strikethrough
+  1J-7  [ ] Test BTC change detection with reprioritized heuristics
+  1J-8  [ ] Test precision: no floating point artifacts in balances
+  1J-9  [ ] Test outbound limiter: 20 concurrent lookups serialize correctly
+  1J-10 [ ] Test finality: unconfirmed tx shows ⏳ and is NOT permanently cached
+  1J-11 [ ] Test txlistinternal graceful degradation on failure
+  1J-12 [ ] Test method ID decoding for known contract calls
+  1J-13 [ ] Test: initial lookup returns value_usd_at_time: null (fast, no CoinGecko)
+  1J-14 [ ] Test: POST /api/prices/enrich returns cached prices instantly
+  1J-15 [ ] Test: frontend shows "—" then updates USD values asynchronously
+  1J-16 [ ] Record vcrpy cassettes
+  1J-17 [ ] Write all unit tests
+
+Outcome: Working address explorer with rate limiting, precision, spam/dust
+         filtering, finality awareness, method decoding, and historical prices.
+
+
+STEP 2 — Transaction Detail + Hop Tracing
+------------------------------------------
+Goal: Click a transaction → see full details. Click a counterparty → trace one hop.
+
+--- 2A: Transaction Detail Panel ---
+
+  2A-1  [ ] Build TxDetail.jsx (slide-out panel, right side)
+  2A-2  [ ] BTC layout: inputs → outputs, change highlight, fee
+  2A-3  [ ] ETH layout: from → to, gas, status, token transfers, internal calls
+  2A-4  [ ] Show decoded method name prominently (from Step 1H):
+              "Function: swapExactETHForTokens(...)"
+              Instead of raw hex input data (still show hex in collapsible section)
+  2A-5  [ ] Show historical USD value next to amounts:
+              "Sent 2.5 ETH ($7,412 at time of transaction)"
+  2A-6  [ ] Show confirmations / finality status
+  2A-7  [ ] Every address clickable → new lookup
+  2A-8  [ ] "Open in Explorer" link, "Copy tx hash" button
+
+--- 2B: Trace Session & Navigation ---
+
+  2B-1  [ ] Trace session uses Zustand store (stores/traceSessionStore.js — see SM-8):
+              Navigation history, back/forward, renderer lock are all in Zustand.
+              Components access via: const { history, push, back } = useTraceSession()
+  2B-2  [ ] Build Breadcrumb.jsx (truncated, clickable, scrollable)
+  2B-3  [ ] Back/Forward navigation + keyboard shortcuts (Alt+Left/Right)
+
+--- 2C: Address Preview (Hover Card) ---
+
+  2C-1  [ ] Build AddressHoverCard.jsx (balance, tx count, label, risk, chain icon)
+  2C-2  [ ] Cache previously looked-up stats in React context
+
+--- 2D: Testing ---
+
+  2D-1  [ ] Test: tx detail opens with correct data
+  2D-2  [ ] Test: address click triggers new lookup
+  2D-3  [ ] Test: breadcrumb shows correct path after 3+ hops
+  2D-4  [ ] Test: method name displays in ETH detail
+  2D-5  [ ] Test: historical USD value displays correctly
+
+Outcome: Manual transaction tracing with rich context at every step.
+
+
+STEP 3 — Entity Labels + Dynamic Known Address Tags
+----------------------------------------------------
+Goal: When an address appears, show if it belongs to a known entity.
+
+--- 3A: Label Database Schema ---
+
+  3A-1  [ ] Create app/models/label.py as SQLAlchemy model (see ORM-4 for example).
+              DO NOT write raw CREATE TABLE SQL. Use the model from ORM-4 exactly.
+  3A-2  [ ] Run: alembic revision --autogenerate -m "add labels table"
+              Then: alembic upgrade head
+
+--- 3B: Data Import Scripts ---
+
+  3B-1  [ ] Etherscan label importer
+  3B-2  [ ] OFAC SDN list importer
+  3B-3  [ ] Walletexplorer.com (BTC) importer
+  3B-4  [ ] Manual label endpoint: POST /api/labels
+
+--- 3C: Background Sync Worker ---
+
+  3C-1  [ ] APScheduler daily label sync
+  3C-2  [ ] OFAC diff alerting (compliance-critical)
+  3C-3  [ ] Admin endpoint: GET /api/labels/status
+
+--- 3D: Label Lookup Endpoints ---
+
+  3D-1  [ ] GET /api/labels/{address}
+  3D-2  [ ] POST /api/labels/batch (max 200)
+  3D-3  [ ] GET /api/labels/search?entity=Binance
+
+--- 3E: Address Tagging Enrichment via Web Search ---
+
+  NEW FEATURE: If an address is unknown in the local label DB, offer
+  a "Search Web" button that helps the investigator find context.
+
+  3E-1  [ ] Build WebSearchButton.jsx:
+              - Appears next to any address with label = Unknown
+              - On click: opens new tab with pre-filled search query:
+                https://www.google.com/search?q="0xabc1234..."
+              - Also offer: "Search on Twitter" (https://twitter.com/search?q=0xabc...)
+                and "Search on Etherscan comments" (etherscan.io/address/0x...#comments)
+
+  3E-2  [ ] For BTC: link to BitcoinTalk search, OXT.me, Blockchair
+
+  3E-3  [ ] Optional future: backend endpoint that scrapes results and suggests
+              labels (POST /api/labels/suggest?address=0x...). But for now,
+              just opening the browser is sufficient and avoids scraping complexity.
+
+--- 3F: Frontend Integration ---
+
+  3F-1  [ ] Build EntityBadge.jsx (color-coded by entity type)
+  3F-2  [ ] Update TxTable, TxDetail, AddressHoverCard with badges
+  3F-3  [ ] Build label search UI
+  3F-4  [ ] Build LabelStats.jsx (admin/debug)
+
+--- 3G: Testing ---
+
+  3G-1  [ ] Test: known Binance address → Exchange badge
+  3G-2  [ ] Test: OFAC address → Sanctioned badge
+  3G-3  [ ] Test: unknown address → shows "Search Web" button
+  3G-4  [ ] Test: batch endpoint returns correct labels
+  3G-5  [ ] Test: OFAC diff identifies newly sanctioned addresses
+
+Outcome: Addresses now have context. Unknown addresses get investigation aids.
+
+
+STEP 4 — Risk Scoring + Exposure Mapping + Pattern Detection
+-------------------------------------------------------------
+Goal: Each address gets a risk score, an exposure breakdown, and known
+      money laundering patterns are auto-detected.
+
+--- 4A: Scoring Engine ---
+
+  4A-1  [ ] Create services/risk.py with RiskScorer class
+  4A-2  [ ] Define configurable rules:
+              SEVERE: is_sanctioned (100)
+              HIGH:   1hop_sanctioned (80), mixer_interaction (75)
+              MEDIUM: gambling (40), darknet (50)
+              LOW:    no_flags (0)
+  4A-3  [ ] Implement each check against labels + tx history
+  4A-4  [ ] Aggregate: highest severity wins
+  4A-5  [ ] Return detailed breakdown with evidence
+
+--- 4B: Risk Exposure Summary ---
+
+  NEW FEATURE: Instead of just a single score, show what PERCENTAGE of an
+  address's volume is exposed to risky entities, broken down by hop distance.
+
+  4B-1  [ ] Create services/exposure.py:
+              def compute_exposure(address, chain, max_hops=3) → ExposureReport
+
+              ExposureReport:
+              {
+                direct_exposure: {
+                  sanctioned: "14.2%",     # 14.2% of volume went to/from sanctioned
+                  mixer: "8.1%",
+                  gambling: "2.0%",
+                  clean: "75.7%"
+                },
+                indirect_exposure: {       # within N hops
+                  sanctioned: "32.1%",
+                  mixer: "18.4%",
+                  gambling: "5.2%",
+                  clean: "44.3%"
+                },
+                total_volume_analyzed: "45200000000000000000",
+                total_volume_usd: "$134,500",  # using historical prices
+                hops_analyzed: 3
+              }
+
+  4B-2  [ ] Compute by walking the transaction graph:
+              - Direct: sum volume of txs where counterparty is labeled
+              - Indirect: run a shallow BFS (reuse trace engine), sum volume
+                where any node in the path is labeled
+              - Express as percentage of total volume
+
+  4B-3  [ ] This is expensive — cache aggressively, compute async.
+              Return cached version immediately, recompute in background if stale.
+
+  4B-4  [ ] Frontend: show exposure donut chart in StatsPanel:
+              "Direct Exposure: 14% Sanctioned, 8% Mixer, 78% Clean"
+              "Indirect Exposure (3 hops): 32% Sanctioned, 18% Mixer, 44% Clean"
+
+--- 4C: Peeling Chain Detection (BTC) ---
+
+  NEW FEATURE: Detect "peeling chains" — a common BTC money laundering
+  technique where a large amount is sent to a new address, a small "peel"
+  goes to an exchange deposit, and the remainder continues to another new
+  change address. Repeats dozens of times.
+
+  4C-1  [ ] Create services/peeling.py:
+              def detect_peeling_chain(address, chain) → PeelingChain | None
+
+              Detection logic:
+              - Starting from the address, follow the "change" output (from Step 1E)
+              - If 3+ consecutive transactions follow the pattern:
+                  [large input] → [small output to known entity] + [large output to new address]
+                  where "small output" < 10% of input and goes to an exchange
+                  and "large output" goes to a previously unseen address
+              - Then flag as a peeling chain
+
+              Return:
+              {
+                detected: true,
+                chain_length: 14,          # number of peels
+                total_peeled: "2.3 BTC",   # sum of small outputs
+                total_peeled_usd: "$98,000",
+                peel_destinations: [       # where the small amounts went
+                  { address: "0x...", label: "Binance", amount: "0.15 BTC" },
+                  { address: "0x...", label: "Kraken", amount: "0.22 BTC" },
+                ],
+                remainder_address: "bc1...",  # current end of the chain
+                remainder_amount: "8.7 BTC"
+              }
+
+  4C-2  [ ] This reuses change detection (Step 1E) and labels (Step 3).
+              Only works well for BTC UTXO chains — not applicable to account model.
+
+  4C-3  [ ] Frontend: in FlowTree (Step 6), collapse peeling chains into a single
+              visual group: "Peeling Chain: 14 hops, 2.3 BTC extracted to 5 exchanges"
+              Expandable to show individual peels.
+
+  4C-4  [ ] In GraphView (Step 7): render peeling chains as a single elongated
+              "snake" node rather than 14 individual nodes (reduces clutter).
+
+--- 4D: Common Input Ownership Clustering (BTC) ---
+
+  NEW FEATURE: The most fundamental Bitcoin clustering heuristic. If Address A
+  and Address B are both used as INPUTS in the same transaction, they almost
+  certainly belong to the same entity (because you need the private key for
+  each input to sign the transaction).
+
+  4D-1  [ ] Create services/clustering.py:
+
+              def cluster_by_common_input(address, txs) → Cluster:
+                """
+                Walk all transactions for an address. For each tx:
+                  - Collect all input addresses
+                  - These addresses all belong to the same cluster
+                Union-Find data structure to merge clusters efficiently.
+                """
+
+  4D-2  [ ] Data structure: Union-Find (Disjoint Set Union):
+              class UnionFind:
+                def find(self, x) → root
+                def union(self, x, y) → None
+                def get_cluster(self, x) → set[address]
+
+              For each BTC transaction:
+                inputs = [inp.address for inp in tx.inputs]
+                for i in range(1, len(inputs)):
+                  uf.union(inputs[0], inputs[i])
+
+  4D-3  [ ] Create app/models/cluster.py (SQLAlchemy model — see ORM-3).
+              Schema (implement as SQLAlchemy Mapped columns, NOT raw SQL):
+              CREATE TABLE clusters (
+                address TEXT PRIMARY KEY,
+                cluster_id TEXT NOT NULL,     -- UUID or canonical address
+                chain TEXT NOT NULL,
+                updated_at TEXT
+              )
+              CREATE INDEX idx_cluster ON clusters(cluster_id)
+
+  4D-4  [ ] On BTC address lookup: after fetching transactions, run clustering
+              on all input addresses. Store results in clusters table.
+
+  4D-5  [ ] Cluster lookup: when displaying any BTC address, check if it belongs
+              to a cluster. If so:
+              - Show: "This address is part of a cluster of 47 addresses"
+              - If ANY address in the cluster is labeled (e.g., one is a known
+                Binance deposit), apply that label to the entire cluster.
+              - Cluster balance = sum of all addresses in the cluster
+
+  4D-6  [ ] API endpoint: GET /api/cluster/{address}
+              Returns: { cluster_id, addresses: [...], total_balance, label (if any) }
+
+  4D-7  [ ] Frontend: show cluster badge next to BTC addresses:
+              "📎 Cluster (47 addresses)" — clickable to show full cluster
+              In GraphView: option to merge cluster into single node
+
+  4D-8  [ ] IMPORTANT LIMITATION: Common Input Ownership does NOT work for
+              CoinJoin transactions (where multiple unrelated users combine inputs).
+              Detect potential CoinJoin: if a transaction has many inputs from
+              different addresses AND many outputs of equal value, it's likely
+              a CoinJoin → do NOT cluster those inputs together.
+              Flag: "Possible CoinJoin detected — clustering skipped for this tx"
+
+  4D-9  [ ] Test: two addresses used as inputs in same tx → same cluster
+  4D-10 [ ] Test: CoinJoin-like tx → clustering correctly skipped
+  4D-11 [ ] Test: label propagation — one labeled address in cluster → all get label
+
+--- 4E: Caching & Invalidation ---
+
+  4E-1  [ ] Create app/models/risk_score.py (SQLAlchemy model — see ORM-3)
+  4E-2  [ ] Cache scores after computation
+  4E-3  [ ] Mark stale when: OFAC updates, new txs discovered
+  4E-4  [ ] Lazy re-compute on next access
+
+--- 4F: API Endpoints ---
+
+  4F-1  [ ] GET /api/risk/{address}
+  4F-2  [ ] POST /api/risk/batch
+  4F-3  [ ] GET /api/risk/{address}/exposure  (exposure report)
+  4F-4  [ ] GET /api/cluster/{address}        (BTC clustering)
+
+--- 4G: Frontend Integration ---
+
+  4G-1  [ ] Build RiskBadge.jsx (color-coded, expandable breakdown)
+  4G-2  [ ] Build ExposureChart.jsx (donut chart showing direct/indirect exposure)
+  4G-3  [ ] Build ClusterBadge.jsx (BTC cluster info)
+  4G-4  [ ] Update StatsHeader, TxTable, AddressHoverCard with all badges
+
+--- 4H: Testing ---
+
+  4H-1  [ ] Test: sanctioned → SEVERE
+  4H-2  [ ] Test: Tornado Cash interaction → HIGH
+  4H-3  [ ] Test: clean address → LOW
+  4H-4  [ ] Test: exposure percentages sum to 100%
+  4H-5  [ ] Test: peeling chain detection on known BTC pattern
+  4H-6  [ ] Test: BTC clustering with Union-Find
+  4H-7  [ ] Test: CoinJoin detection prevents false clustering
+  4H-8  [ ] Test: score recalculates after OFAC update
+
+Outcome: Rich risk intelligence — scores, exposure mapping, clustering, and
+         money laundering pattern detection.
+
+
+STEP 5 — Multi-Hop Trace Engine (SSE Streaming + Configurable Pruning)
+----------------------------------------------------------------------
+Goal: Automated tracing — "follow the money" N hops deep.
+
+  ⚠️  ARCHITECTURAL BOTTLENECK: HTTP Timeouts on Long-Running Traces
+  (See v0.0.0.7 for full SSE architecture rationale)
+  SOLUTION: Async job pattern with SSE streaming.
+
+--- 5A: Job Management ---
+
+  5A-1  [ ] Install sse-starlette
+  5A-2  [ ] Create app/jobs/trace_jobs.py (in-memory job store)
+  5A-3  [ ] POST /api/trace → returns job_id instantly (<100ms)
+  5A-4  [ ] Apply slowapi: 5 trace jobs/min/IP
+  5A-5  [ ] Launch BFS as asyncio.create_task(run_trace(job))
+
+--- 5B: SSE Streaming Endpoint ---
+
+  5B-1  [ ] GET /api/trace/{job_id}/stream → EventSourceResponse
+
+  ⚠️  BUG PREVENTION: SSE Payload Saturation (Memory Bloat)
+
+  5B-2  [ ] SSE events must stream DELTAS ONLY — never the full graph.
+
+              If the trace discovers 500 nodes and 1,000 edges, pushing the
+              entire graph structure on every iteration will saturate the
+              browser network tab and choke React's memory heap. The payload
+              grows quadratically with graph size.
+
+              RULE: The backend pushes only the NEWLY DISCOVERED data per event.
+              The frontend (useTraceStream.js) is responsible for appending
+              deltas to the master graph state in React.
+
+              SSE event types (ALL deltas, never full snapshots):
+
+              event: progress
+              data: { "hop": 1, "max_hops": 3, "nodes_found": 12,
+                      "edges_found": 23, "api_calls_used": 15,
+                      "api_calls_limit": 200 }
+              // Lightweight counters only. No node/edge data.
+
+              event: node_discovered
+              data: { "address": "0x...", "label": "Binance", "risk": "LOW",
+                      "hop": 1 }
+              // Single node. Frontend appends to nodes array.
+
+              event: edge_discovered
+              data: { "from": "0x...", "to": "0x...", "value": "150000...",
+                      "tx_hash": "0x...", "token": "ETH", "timestamp": 1711... }
+              // Single edge. Frontend appends to edges array.
+              // Batching: if multiple edges discovered in one BFS step,
+              // send up to 10 edges per SSE event as an array to reduce
+              // event overhead. Never more than 10 per event.
+
+              event: pruned
+              data: { "address": "0x...", "reason": "exchange", "hop": 2 }
+
+              event: sampled
+              data: { "address": "0x...", "total_txs": 2341, "sampled": 50 }
+
+              event: peeling_chain_detected
+              data: { "chain_length": 14, "total_peeled": "2.3 BTC", ... }
+
+              event: warning
+              data: { "message": "Etherscan tokentx timed out for 0xabc..." }
+
+              event: completed
+              data: { "total_nodes": 147, "total_edges": 289,
+                      "trace_time_ms": 4200,
+                      "pruned_at": [...], "sampling": [...] }
+              // Metadata ONLY. No node/edge data. The frontend already has
+              // the full graph from accumulated deltas.
+
+              event: failed
+              data: { "error": "...", "partial": true }
+              // Frontend uses whatever deltas it accumulated so far.
+
+  5B-3  [ ] Heartbeat every 15s
+  5B-4  [ ] Client disconnect → cancel background task
+
+--- 5C: Cancel Endpoint ---
+
+  5C-1  [ ] POST /api/trace/{job_id}/cancel → partial results
+
+--- 5D: BFS Trace Engine ---
+
+  ⚠️  BUG PREVENTION: Multi-Hop BFS vs. API Limits
+  (max_txs_per_node cap + hop-based API budgeting from v0.0.0.7)
+
+  5D-1  [ ] Create services/tracer.py with BFSTracer class
+  5D-2  [ ] max_txs_per_node hard cap (default 50)
+  5D-3  [ ] API budget split: hop 1 (40%), hop 2 (35%), hop 3 (25%)
+  5D-4  [ ] BFS loop with delta-only SSE events:
+              - Push "node_discovered" for each new node (single node per event)
+              - Batch "edge_discovered" events: accumulate edges during one BFS
+                step, push up to 10 per SSE event to reduce overhead
+              - Push "progress" counters periodically (every 5 nodes or 2 seconds)
+              - NEVER push the full accumulated graph — only deltas
+              - On completion: push "completed" with metadata only (counters,
+                pruning info, timing). No nodes/edges in completed event.
+  5D-5  [ ] All provider calls through global token bucket
+  5D-6  [ ] Apply dust floor to fetched txs within BFS (prevent dust from
+              polluting the trace graph)
+  5D-7  [ ] During BFS: run peeling chain detection on BTC nodes.
+              If detected, emit SSE event "peeling_chain_detected" and collapse
+              the peeling chain into a single meta-node in the graph result.
+  5D-8  [ ] During BFS: run Common Input Ownership clustering on BTC nodes.
+              If an expanded node belongs to a known cluster, optionally expand
+              the cluster (fetch txs for sibling addresses in the cluster).
+              Configurable: "Expand clusters during trace: yes/no"
+
+--- 5E: Frontend Integration ---
+
+  5E-1  [ ] Build TraceControls.jsx (direction, hops, min_value, pruning, sampling)
+  5E-2  [ ] Implement SSE client in hooks/useTraceStream.js:
+
+              ⚠️  BUG PREVENTION: React State Thrashing on SSE Deltas (UI Freeze)
+
+              Even with useRef, calling React state updates on every SSE event
+              will trigger re-renders of the graph component for each of the
+              500+ nodes and 1000+ edges. This throttles the main thread,
+              freezes the UI, and makes the cancel button unresponsive.
+
+              SOLUTION: Completely bypass React's render cycle for graph topology
+              updates. Use an imperative handle to push deltas directly into the
+              Cytoscape or Sigma instance. React state is updated on a slow
+              cadence (1s tick) ONLY for text-based counters (TraceProgress).
+
+              ARCHITECTURE (two data channels):
+
+              Channel 1: IMPERATIVE (fast, no React re-render)
+                SSE events → useTraceStream → graphRef.current.addNode(node)
+                                             → graphRef.current.addEdges(batch)
+                The graph renderer exposes an imperative API via forwardRef:
+                  <GraphView ref={graphRef} ... />
+                  graphRef.current = {
+                    addNode(nodeData),     // directly calls cy.add() or sigma.addNode()
+                    addEdges(edgeBatch),   // directly calls cy.add() or sigma.addEdge()
+                    getGraph(),            // returns current {nodes, edges} for export
+                  }
+                These methods mutate the graph instance directly — zero React involvement.
+
+              Channel 2: THROTTLED REACT STATE (slow, 1s tick, for UI counters)
+                SSE events → accumulate counters in a plain JS object (not state)
+                Every 1 second (setInterval), flush counters to React state:
+                  setProgress({ nodes: counter.nodes, edges: counter.edges,
+                                hop: counter.hop, apiCalls: counter.apiCalls })
+                TraceProgress.jsx re-renders once per second — smooth and responsive.
+
+              Implementation:
+
+              const useTraceStream = (graphRef) => {
+                // Counters — plain JS, NOT React state
+                const counters = useRef({ nodes: 0, edges: 0, hop: 0, apiCalls: 0 })
+
+                // Throttled React state for UI — updated every 1s
+                const [progress, setProgress] = useState(null)
+                const [metadata, setMetadata] = useState(null)
+                const [status, setStatus] = useState("idle") // idle|streaming|completed|failed
+
+                useEffect(() => {
+                  // Flush counters to React state every 1 second
+                  const interval = setInterval(() => {
+                    setProgress({ ...counters.current })
+                  }, 1000)
+                  return () => clearInterval(interval)
+                }, [])
+
+                const startTrace = async (params) => {
+                  const { job_id, stream_url } = await fetch("/api/trace", { ... })
+                  setStatus("streaming")
+                  const source = new EventSource(stream_url)
+
+                  source.addEventListener("node_discovered", (e) => {
+                    const node = JSON.parse(e.data)
+                    counters.current.nodes++
+                    // IMPERATIVE: push directly into graph renderer — no React
+                    graphRef.current?.addNode(node)
+                  })
+
+                  source.addEventListener("edge_discovered", (e) => {
+                    const batch = JSON.parse(e.data)
+                    counters.current.edges += batch.length
+                    // IMPERATIVE: push directly into graph renderer — no React
+                    graphRef.current?.addEdges(batch)
+                  })
+
+                  source.addEventListener("progress", (e) => {
+                    const p = JSON.parse(e.data)
+                    counters.current.hop = p.hop
+                    counters.current.apiCalls = p.api_calls_used
+                    // NOT calling setState here — the 1s interval handles it
+                  })
+
+                  source.addEventListener("completed", (e) => {
+                    setMetadata(JSON.parse(e.data))
+                    setStatus("completed")
+                    setProgress({ ...counters.current }) // final flush
+                    source.close()
+                  })
+
+                  source.addEventListener("failed", (e) => {
+                    setStatus("failed")
+                    source.close()
+                  })
+                }
+
+                return { progress, metadata, status, startTrace, cancelTrace }
+              }
+
+  5E-3  [ ] Build GraphView.jsx with forwardRef imperative handle:
+              const GraphView = forwardRef((props, ref) => {
+                const cyRef = useRef(null) // or sigmaRef
+
+                useImperativeHandle(ref, () => ({
+                  addNode(data) {
+                    cyRef.current?.add({ group: 'nodes', data })
+                    // For Sigma: sigmaRef.current.getGraph().addNode(data.id, data)
+                  },
+                  addEdges(batch) {
+                    batch.forEach(edge => {
+                      cyRef.current?.add({ group: 'edges', data: edge })
+                    })
+                  },
+                  getGraph() {
+                    return { nodes: [...], edges: [...] }
+                  }
+                }))
+              })
+
+              This means: Cytoscape/Sigma handle their own DOM mutations.
+              React never knows about individual node additions.
+              The graph just grows visually in real-time — smooth and fast.
+
+  5E-4  [ ] LAYOUT DURING STREAMING:
+              - Do NOT re-run the full layout on every node addition (too expensive)
+              - During streaming: new nodes are placed at a default position
+                (e.g., random near their parent, or at the edge of the viewport)
+              - After trace completes (or every 50 nodes): trigger a Web Worker
+                layout recomputation that repositions everything smoothly
+              - Cytoscape: use cy.layout().run() with animate:true for smooth transition
+              - Sigma: batch position updates from worker, apply in one frame
+
+  5E-5  [ ] Build TraceProgress.jsx:
+              - Reads from the throttled React state (updates once per second)
+              - "Tracing hop 2 of 3..."
+              - "Found 147 addresses, 289 edges"
+              - API budget bar
+              - Cancel button (always responsive because main thread isn't blocked)
+              - Elapsed time counter
+
+  5E-6  [ ] Render partial results in FlowTree:
+              - FlowTree DOES use React state (it's text-based, re-renders are cheap)
+              - Update FlowTree every 2 seconds from graphRef.current.getGraph()
+              - Do NOT update FlowTree on every SSE event
+
+  5E-7  [ ] Show pruning and sampling info
+  5E-8  [ ] When peeling_chain_detected event arrives, show alert:
+              "Peeling chain detected: 14 hops, 2.3 BTC extracted to 5 exchanges"
+
+--- 5F: Job Cleanup ---
+
+  5F-1  [ ] Auto-expire completed jobs after 30 minutes
+  5F-2  [ ] GET /api/trace/{job_id} for reconnection
+  5F-3  [ ] Limit concurrent trace jobs: max 3 globally
+
+--- 5G: Testing ---
+
+  5G-1  [ ] Test: POST returns job_id instantly
+  5G-2  [ ] Test: SSE delivers events in order
+  5G-3  [ ] Test: completed event contains valid graph
+  5G-4  [ ] Test: cancel returns partial results
+  5G-5  [ ] Test: max_txs_per_node caps correctly
+  5G-6  [ ] Test: API budget distributed across hops
+  5G-7  [ ] Test: pruning works
+  5G-8  [ ] Test: concurrent traces share global token bucket
+  5G-9  [ ] Test: heartbeat prevents timeout
+  5G-10 [ ] Test: dust floor applied within BFS
+  5G-11 [ ] Test: peeling chain detection emits SSE event
+  5G-12 [ ] Test: SSE "completed" event contains ONLY metadata, no nodes/edges
+  5G-13 [ ] Test: imperative addNode() pushes to Cytoscape without React re-render
+              (measure: React render count stays at 0 during 100 rapid addNode calls)
+  5G-14 [ ] Test: TraceProgress counters update exactly once per second (not per event)
+  5G-15 [ ] Test: cancel button remains responsive during a 500-node trace
+              (click latency < 100ms at any point during streaming)
+  5G-16 [ ] Test: edge batching sends max 10 edges per SSE event
+  5G-17 [ ] Test: FlowTree updates every 2s from getGraph(), not per SSE event
+
+Outcome: Streaming, non-blocking fund-flow tracing with pattern detection.
+
+STEP 6 — List-Based Flow Visualization
+---------------------------------------
+Goal: Readable fund-flow analysis without needing graph rendering.
+
+--- 6A: Flow Tree Component ---
+
+  6A-1  [ ] Build FlowTree.jsx (indented collapsible tree from trace results)
+  6A-2  [ ] Each tree node: amount, token, USD value (historical), address,
+              entity badge, risk badge, timestamp, pruned indicator, confirmations
+  6A-3  [ ] Collapsible sub-trees
+  6A-4  [ ] Click address to navigate (Step 2 hop trace)
+  6A-5  [ ] Tree updates live via SSE events
+
+--- 6B: Peeling Chain Collapse ---
+
+  NEW INTEGRATION: When a peeling chain was detected (Step 4C), collapse it
+  in the tree view into a single group node rather than showing 14+ identical hops.
+
+  6B-1  [ ] Detect peeling_chain_detected metadata in trace results
+  6B-2  [ ] Render as collapsed summary node:
+              "🔗 Peeling Chain: 14 hops → 2.3 BTC extracted to 5 exchanges"
+              Expandable to show individual peels with destinations
+  6B-3  [ ] Collapsed view shows: total peeled amount (USD), number of hops,
+              destination entities, remainder at end of chain
+
+--- 6C: Filters ---
+
+  6C-1  [ ] Build FilterControls.jsx (shared, reused in Step 7):
+              - Min amount slider (BigInt), date range, token selector
+              - "Show only flagged paths" / "Show only paths to sanctioned"
+              - "Show only finalized transactions" toggle
+  6C-2  [ ] Apply filters client-side
+  6C-3  [ ] Show filter summary
+
+--- 6D: Path Highlighting ---
+
+  6D-1  [ ] "Shortest path to risk": Dijkstra to any HIGH+ node
+  6D-2  [ ] Red highlight on all paths touching sanctioned/high-risk
+
+--- 6E: Export ---
+
+  6E-1  [ ] CSV export (with USD historical values column)
+  6E-2  [ ] Filename: chainscope_trace_{address}_{date}.csv
+
+--- 6F: Testing ---
+
+  6F-1  [ ] Test: tree renders from trace data
+  6F-2  [ ] Test: peeling chain collapse shows correct summary
+  6F-3  [ ] Test: filters reduce visible paths
+  6F-4  [ ] Test: CSV export includes USD values
+
+Outcome: Readable fund-flow analysis with peeling chain awareness.
+
+
+STEP 7 — Interactive Graph Visualization (Web Worker Layouts)
+--------------------------------------------------------------
+Goal: Full node-and-edge graph like Chainalysis Reactor.
+
+  ⚠️  ARCHITECTURAL BOTTLENECK: UI Thread Blocking on Graph Layouts
+  (See v0.0.0.7 for full Web Worker architecture + code)
+  SOLUTION: All layout math offloaded to Web Worker.
+
+--- 7A: Web Worker Layout Engine ---
+
+  7A-1  [ ] Create workers/layoutWorker.js (dagre + d3-force in background thread)
+  7A-2  [ ] Create hooks/useGraphLayout.js (worker bridge, returns positions + isComputing)
+  7A-3  [ ] "Computing layout..." overlay while worker runs (UI stays interactive)
+
+--- 7B: Rendering Engine ---
+
+  ⚠️  BUG PREVENTION: Renderer Auto-Switch Race Condition (Crash Risk)
+
+  The original plan auto-switches from Cytoscape (<300 nodes) to Sigma
+  (300+ nodes) based on current node count. During a live SSE trace, this
+  is CATASTROPHIC: at node 299 Cytoscape is rendering. Node 300 arrives.
+  React unmounts the entire Cytoscape canvas, destroys the DOM, mounts
+  a Sigma WebGL canvas, requests a new Web Worker layout for 300 nodes,
+  while SSE events 301/302/303 are still arriving. This causes a
+  rendering loop and crashes the browser tab.
+
+  SOLUTION: Lock the renderer BEFORE the trace starts. Never switch
+  renderers while a trace is streaming or a graph is displayed.
+
+  7B-1  [ ] Create hooks/useGraphRenderer.js with LOCKED renderer selection:
+              - The renderer is chosen ONCE and locked for the session:
+                  Option A: User manually selects in TraceControls.jsx:
+                    "Graph Size: Small (< 300 nodes) | Large (300+ nodes)"
+                    Small → Cytoscape initialized at node 0
+                    Large → Sigma initialized at node 0
+
+                  Option B: Auto-select based on trace parameters:
+                    If max_hops >= 3 AND trace_through_entities === true → Sigma
+                    Otherwise → Cytoscape
+                    Lock at trace start, never re-evaluate.
+
+              - The renderer component is NEVER unmounted while data exists.
+              - If the user wants to switch renderers after a trace completes:
+                provide a "Switch to Sigma/Cytoscape" button that:
+                  1. Copies current graph state to a buffer
+                  2. Unmounts old renderer (cleanly, no race)
+                  3. Mounts new renderer
+                  4. Injects buffered state
+                  5. Re-runs layout via Web Worker
+                This is a deliberate user action, not an automatic threshold.
+
+  7B-2  [ ] Both renderers receive pre-computed positions from Web Worker
+  7B-3  [ ] Install cytoscape (NOT cytoscape-dagre), sigma + graphology
+  7B-4  [ ] Build GraphView.jsx wrapper:
+              - Props: rendererType (locked), nodes, edges, positions
+              - rendererType is immutable after first render
+              - Internally delegates to CytoscapeGraph.jsx or SigmaGraph.jsx
+  7B-5  [ ] Renderer indicator + node count: "Cytoscape (247 nodes)" / "Sigma WebGL (1,203 nodes)"
+
+  7B-6  [ ] Update TraceControls.jsx:
+              - Add "Expected graph size" selector: "Standard" / "Large investigation"
+              - "Standard" → locks Cytoscape
+              - "Large investigation" → locks Sigma from the start
+              - Show help text: "Choose 'Large' if you expect 300+ addresses.
+                You can switch renderers after the trace completes."
+
+  7B-7  [ ] Test: start trace with Cytoscape, stream 400+ nodes → NO crash
+              (Cytoscape will be slow but won't crash — it just renders them)
+  7B-8  [ ] Test: start trace with Sigma at node 0 → renders correctly as
+              nodes arrive one by one via SSE
+  7B-9  [ ] Test: switch renderer after trace completes → clean unmount/mount
+              cycle with no data loss
+
+--- 7C: Node & Edge Mapping ---
+
+  7C-1  [ ] Nodes:
+              - Size: log(volume)
+              - Color: risk gradient (green → red)
+              - Shape: ● unknown, ⬡ exchange, ◆ DeFi, ▲ bridge, ■ sanctioned, ⬠ mixer
+              - Border: dashed if pruned
+              - Label: entity name or truncated address
+              - NEW: small chain icon badge (for multi-chain, Step 9)
+              - NEW: 📎 cluster icon if BTC address belongs to a cluster (Step 4D)
+
+  7C-2  [ ] Edges:
+              - Thickness: log(value)
+              - Label: amount + token + USD value (historical)
+              - Color: grey default, red if sanctioned
+              - Arrow: direction of flow
+              - Dashed: failed or bridge crossing
+
+  7C-3  [ ] NEW: Peeling chain rendering:
+              - If peeling chain detected in trace results, render as a single
+                elongated "snake" meta-node instead of 14 individual nodes
+              - Label: "Peeling Chain (14 hops, 2.3 BTC)"
+              - Double-click to expand into individual nodes
+              - Reduces graph clutter significantly for laundering patterns
+
+  7C-4  [ ] NEW: Cluster rendering (BTC):
+              - Option to merge all addresses in a cluster into a single "cluster node"
+              - Show: "Cluster: 47 addresses, 12.5 BTC total"
+              - Toggle: "Expand clusters" / "Collapse clusters"
+
+--- 7D: Layout Options ---
+
+  7D-1  [ ] Dagre (hierarchical) — default
+  7D-2  [ ] Force-directed (d3-force in Web Worker)
+  7D-3  [ ] Circular
+  7D-4  [ ] Layout switcher → triggers worker recomputation
+  7D-5  [ ] "Reset layout" button
+
+--- 7E: Node Interactions ---
+
+  7E-1  [ ] Hover: tooltip (address, label, balance, risk, exposure %, hop distance)
+              NEW: show exposure % from Step 4B if available
+  7E-2  [ ] Click: expand node (trigger lookup, add edges live)
+  7E-3  [ ] Right-click context menu:
+              "Trace forward/backward", "Copy address", "Open in explorer",
+              "Pin/Unpin", "Hide", "Set as root"
+              NEW: "View cluster" (BTC only, if in a cluster)
+              NEW: "Search web for this address" (opens Google/Twitter)
+
+--- 7F: Edge Interactions ---
+
+  7F-1  [ ] Hover: tx hash, value, timestamp, token, USD value (historical)
+  7F-2  [ ] Click: open TxDetail panel (reuse Step 2, shows method name)
+
+--- 7G: Controls Panel ---
+
+  7G-1  [ ] Zoom, pan, fit-to-screen
+  7G-2  [ ] Toggle labels on/off
+  7G-3  [ ] Reuse FilterControls.jsx
+  7G-4  [ ] Pin all / Unpin all
+  7G-5  [ ] "Collapse exchange": merge edges to/from exchange into summary
+  7G-6  [ ] "Collapse peeling chains": merge detected chains into snake nodes
+  7G-7  [ ] "Collapse clusters": merge BTC clusters into single nodes
+  7G-8  [ ] "Highlight path": click two nodes → shortest path
+  7G-9  [ ] Undo/redo stack
+
+--- 7H: UI Extras ---
+
+  7H-1  [ ] Color + shape legend
+  7H-2  [ ] Minimap
+  7H-3  [ ] Screenshot export (PNG/SVG)
+  7H-4  [ ] Node/edge count indicator
+  7H-5  [ ] Graph updates live from SSE trace events
+
+--- 7I: Testing ---
+
+  7I-1  [ ] Test: small graph → Cytoscape
+  7I-2  [ ] Test: large graph → Sigma auto-switch
+  7I-3  [ ] Test: Web Worker layout doesn't freeze UI (>30fps during computation)
+  7I-4  [ ] Test: layout cancel keeps last positions
+  7I-5  [ ] Test: layout switch triggers worker recompute
+  7I-6  [ ] Test: expanding node re-runs layout
+  7I-7  [ ] Test: "Collapse exchange" merges edges
+  7I-8  [ ] Test: peeling chain renders as snake meta-node
+  7I-9  [ ] Test: BTC cluster renders as single merged node
+
+Outcome: Full interactive graph with pattern-aware rendering.
+
+
+STEP 8 — Timeline + Aggregation Views
+--------------------------------------
+Goal: Add temporal analysis alongside the graph.
+
+--- 8A: Timeline Chart ---
+
+  ⚠️  BUG PREVENTION: Recharts / D3 vs. BigInt (see PREC-6/7)
+  All chart data arrays MUST cast BigInt → Number using bigIntToChartNumber().
+  This applies to EVERY Recharts component in Steps 8A through 8D.
+  Precision loss is sub-pixel and visually imperceptible on a chart.
+
+  8A-1  [ ] Install recharts
+  8A-2  [ ] Build TimelineChart.jsx:
+              - Convert BigInt values using bigIntToChartNumber() BEFORE passing
+                to Recharts data prop:
+                  const chartData = txs.map(tx => ({
+                    date: tx.timestamp,
+                    volume: bigIntToChartNumber(tx.value, tx.decimals),
+                    volumeUsd: tx.value_usd_at_time ? parseFloat(tx.value_usd_at_time) : null
+                  }))
+              - Bar chart: tx volume per day/week/month
+              - Line overlay: cumulative balance (also Number-cast)
+              - Granularity selector: day / week / month
+              - Brush selection: drag to select time range
+  8A-3  [ ] Click-to-filter: time range → filters graph + flow tree
+  8A-4  [ ] NEW: dual Y-axis — left axis: native token volume, right axis: USD value
+              (using historical prices from Step 1I)
+
+--- 8B: Activity Heatmap ---
+
+  8B-1  [ ] Build ActivityHeatmap.jsx (hours × days grid)
+  8B-2  [ ] Insight text ("Peak activity: Tuesday 14:00-16:00 UTC")
+
+--- 8C: Balance History ---
+
+  8C-1  [ ] Build BalanceChart.jsx:
+              - Compute running balance using BigInt (exact ledger math)
+              - Cast final balance-per-date array to Number for Recharts:
+                  const chartData = balanceHistory.map(b => ({
+                    date: b.timestamp,
+                    balance: bigIntToChartNumber(b.balance, decimals),
+                    balanceUsd: b.balance_usd ? parseFloat(b.balance_usd) : null
+                  }))
+              - Line chart over time, mark large events, dual axis (native + USD)
+  8C-2  [ ] NEW: show USD-equivalent balance line using historical prices
+              (dual axis: native token + USD)
+
+--- 8D: Aggregate Stats ---
+
+  8D-1  [ ] Build StatsPanel.jsx:
+              - Top 10 counterparties by volume (with labels + USD)
+              - Most-used tokens (donut)
+              - Volume by entity type (stacked bar)
+              - Average tx size trend
+              - Inflow vs outflow ratio
+  8D-2  [ ] Clickable stats → filter graph
+  8D-3  [ ] NEW: Include ExposureChart.jsx (from Step 4B) in the stats panel
+              "Direct Exposure: 14% Sanctioned, 8% Mixer, 78% Clean"
+
+--- 8E: Anomaly Detection ---
+
+  8E-1  [ ] Create services/anomaly.py (mean + stddev, flag >2σ)
+  8E-2  [ ] Red bands on timeline
+  8E-3  [ ] "Unusual activity detected" banner
+
+--- 8F: Layout Integration ---
+
+  8F-1  [ ] Build AnalysisPanel.jsx (tabs: Timeline | Heatmap | Balance | Stats | Exposure)
+  8F-2  [ ] Sync all views: time range updates everything
+  8F-3  [ ] Responsive: tabs → accordion on small screens
+
+--- 8G: Testing ---
+
+  8G-1  [ ] Test: timeline renders correct volume + USD values
+  8G-2  [ ] Test: heatmap correct distribution
+  8G-3  [ ] Test: time range filters graph
+  8G-4  [ ] Test: anomaly detection flags spikes
+  8G-5  [ ] Test: balance chart uses bigIntToChartNumber (no BigInt passed to Recharts)
+  8G-6  [ ] Test: Recharts does NOT crash when rendering large wei values
+  8G-7  [ ] Test: exposure chart renders correct percentages
+
+Outcome: Temporal analysis with USD-denominated forensics views.
+
+
+STEP 9 — Multi-Chain Support & Cross-Chain Continuity
+------------------------------------------------------
+Goal: Add more chains using the same architecture.
+
+--- 9A: Provider Interface ---
+
+  9A-1  [ ] Finalize ChainProvider ABC (get_transactions, get_tx_detail,
+              validate_address, get_balance, chain_id, address_pattern, explorer_url)
+  9A-2  [ ] Provider registry with auto-detect
+
+--- 9B: EVM-Compatible Providers ---
+
+  9B-1  [ ] Create providers/evm_base.py (shared Etherscan-compatible base)
+              - All calls through correct global token bucket
+              - Reuse block-based pagination, spam filter, dust floor, method decoding
+  9B-2  [ ] BSC, Polygon, Arbitrum, Optimism: extending evm_base
+
+--- 9C: Non-EVM Providers ---
+
+  9C-1  [ ] Tron: TronGrid API, custom normalizer
+  9C-2  [ ] Solana: Helius/Solscan, instruction-level normalizer
+
+--- 9D: Frontend Chain Support ---
+
+  9D-1  [ ] Extend addressValidator.js (Tron T..., Solana base58)
+  9D-2  [ ] ChainSelector.jsx for 0x disambiguation
+  9D-3  [ ] Chain icons throughout
+  9D-4  [ ] Graph nodes carry chain badge
+
+--- 9E: Cross-Chain Bridge Detection ---
+
+  9E-1  [ ] data/bridge_contracts.json
+  9E-2  [ ] providers/bridges.py (parse bridge events, LayerZero/Wormhole)
+  9E-3  [ ] Graph: dashed bridge edges with chain icons
+  9E-4  [ ] Flow tree: "↗ Bridged 1.5 ETH → Polygon (0xabc...)"
+  9E-5  [ ] Click bridge edge → continue tracing on destination chain
+
+--- 9F: Testing ---
+
+  9F-1  [ ] Test: each new chain returns normalized txs
+  9F-2  [ ] Test: 0x disambiguation works
+  9F-3  [ ] Test: bridge detection shows bridge edges
+  9F-4  [ ] Test: cross-chain trace continues
+  9F-5  [ ] Test: each provider respects its own token bucket
+
+Outcome: Multi-chain investigation from one interface.
+
+
+STEP 10 — Case Management + Persistence
+----------------------------------------
+Goal: Save investigations, add notes, collaborate.
+
+--- 10A: Database Migration ---
+
+  10A-1  [ ] Alembic setup, SQLite → PostgreSQL migration
+  10A-2  [ ] Tables: users, investigations, snapshots, notes, tags, audit_log,
+               cached_transactions, labels, risk_scores, clusters,
+               historical_prices, method_signatures, exposure_reports
+  10A-3  [ ] Migrate all cached data
+  10A-4  [ ] Verify all features work on PostgreSQL
+
+--- 10B: Authentication ---
+
+  10B-1  [ ] JWT auth (fastapi-users or manual)
+  10B-2  [ ] Register, login, protected routes
+
+--- 10C: Investigation CRUD ---
+
+  10C-1  [ ] Create, list, load, update, delete investigations
+  10C-2  [ ] Snapshot system (version history)
+  10C-3  [ ] Auto-save (debounced, every 30s)
+
+--- 10D: Notes & Tags ---
+
+  10D-1  [ ] Notes with Markdown on any address or tx
+  10D-2  [ ] Tags searchable across investigations
+  10D-3  [ ] "Flag for review" quick-action
+
+--- 10E: Audit Log ---
+
+  10E-1  [ ] Append-only audit_log table
+  10E-2  [ ] Log all user actions with timestamps
+  10E-3  [ ] Export audit log as CSV
+
+--- 10F: Export ---
+
+  10F-1  [ ] PDF report (weasyprint/reportlab):
+               - Include exposure donut chart, peeling chain summary,
+                 cluster analysis, risk scores with USD values
+  10F-2  [ ] CSV export (all data, including historical USD values)
+  10F-3  [ ] PNG/SVG graph export
+  10F-4  [ ] JSON full state backup/restore
+
+--- 10G: Frontend ---
+
+  10G-1  [ ] CaseManager.jsx page
+  10G-2  [ ] Auto-save integration
+  10G-3  [ ] Notes sidebar
+  10G-4  [ ] Investigation header with metadata
+
+--- 10H: Testing ---
+
+  10H-1  [ ] Test: full CRUD cycle
+  10H-2  [ ] Test: audit log captures all actions
+  10H-3  [ ] Test: PDF export generates valid PDF with exposure chart
+  10H-4  [ ] Test: JSON round-trip
+  10H-5  [ ] Test: auth protects endpoints
+
+Outcome: Professional investigation tool with persistence and reporting.
+
+
+=========================================================================
+API RATE LIMITS TO PLAN AROUND
+=========================================================================
+
+Provider             Key?    Hard Limit        Our Token Bucket Setting
+-----------------    ----    ---------------   -------------------------
+Blockstream.info     No      ~10 req/s soft    8.0 req/s
+Etherscan            Yes     5 calls/sec       4.5 req/s
+BscScan              Yes     5 calls/sec       4.5 req/s
+PolygonScan          Yes     5 calls/sec       4.5 req/s
+Arbiscan             Yes     5 calls/sec       4.5 req/s
+CoinGecko            Opt     ~25/min           0.4 req/s
+CoinGecko (hist)     Opt     ~10/min           0.15 req/s  (historical endpoint)
+Helius (Solana)      Yes     10 req/s          8.0 req/s
+TronGrid             Yes     15 req/s          12.0 req/s
+4byte.directory      No      N/A               N/A (bulk download, no live API)
+LayerZero scan       Check   Check docs        Set after testing
+Wormhole scan        Check   Check docs        Set after testing
+
+Strategy:
+  - Global token bucket per provider (proactive, not reactive)
+  - Cache transactions forever once finalized. Unfinalized: 10min TTL.
+  - Historical prices: cache forever (price on a past date never changes).
+  - Method signatures: cache forever (selectors are deterministic).
+  - Batch label endpoint reduces lookups.
+  - Trace engine: budget calls across hops (40/35/25 split).
+  - max_txs_per_node prevents single-node quota burn.
+  - Dust floor prevents noise from entering pipeline at all.
+  - Monitor via GET /api/admin/rate-status.
+  - 429 = bug → log as WARNING.
+
+
+=========================================================================
+FILE STRUCTURE
+=========================================================================
+
+chainscope/
+├── .env.example
+├── .env                                (gitignored)
+├── .gitignore
+├── docker-compose.yml
+├── Makefile                            (dev, test, record-cassettes, lint)
+├── README.md
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AddressInput.jsx        (1A)
+│   │   │   ├── TxTable.jsx             (1G)
+│   │   │   ├── TxDetail.jsx            (2A)
+│   │   │   ├── Breadcrumb.jsx          (2B)
+│   │   │   ├── AddressHoverCard.jsx    (2C)
+│   │   │   ├── RiskBadge.jsx           (4G)
+│   │   │   ├── ExposureChart.jsx       (4G: donut chart — direct/indirect exposure)
+│   │   │   ├── ClusterBadge.jsx        (4G: BTC cluster info)
+│   │   │   ├── EntityBadge.jsx         (3F)
+│   │   │   ├── WebSearchButton.jsx     (3E: "Search web for address")
+│   │   │   ├── SpamTag.jsx             (1G)
+│   │   │   ├── FailedTag.jsx           (1G)
+│   │   │   ├── UnconfirmedTag.jsx      (1G: ⏳ finality indicator)
+│   │   │   ├── FlowTree.jsx            (6A)
+│   │   │   ├── PeelingChainNode.jsx    (6B: collapsed peeling chain in tree)
+│   │   │   ├── TraceControls.jsx       (5E)
+│   │   │   ├── TraceProgress.jsx       (5E)
+│   │   │   ├── FilterControls.jsx      (6C: shared)
+│   │   │   ├── GraphView.jsx           (7B: wrapper with forwardRef imperative handle)
+│   │   │   ├── CytoscapeGraph.jsx     (7B: Cytoscape renderer with addNode/addEdges API)
+│   │   │   ├── SigmaGraph.jsx         (7B: Sigma WebGL renderer with addNode/addEdges API)
+│   │   │   ├── TimelineChart.jsx       (8A)
+│   │   │   ├── ActivityHeatmap.jsx     (8B)
+│   │   │   ├── BalanceChart.jsx        (8C)
+│   │   │   ├── StatsPanel.jsx          (8D)
+│   │   │   ├── AnalysisPanel.jsx       (8F)
+│   │   │   ├── ChainSelector.jsx       (9D)
+│   │   │   ├── ErrorBanner.jsx         (ERR-4)
+│   │   │   ├── ExampleLookups.jsx      (TEST-2)
+│   │   │   ├── LabelStats.jsx          (3F)
+│   │   │   └── StatsHeader.jsx         (1G)
+│   │   ├── pages/
+│   │   │   ├── Explorer.jsx            (Steps 1-9)
+│   │   │   └── CaseManager.jsx         (Step 10)
+│   │   ├── hooks/
+│   │   │   ├── useTraceStream.js       (5E: SSE client + imperative graph handle)
+│   │   │   ├── useGraphLayout.js       (7A: Web Worker bridge)
+│   │   │   └── useGraphRenderer.js     (7B: renderer lock, no mid-stream switch)
+│   │   ├── stores/                     (SM: Zustand — global client state)
+│   │   │   ├── traceSessionStore.js    (SM-8: nav history, renderer lock, active job)
+│   │   │   └── filterStore.js          (SM-9: all filter state)
+│   │   ├── types/                      (DD: API schema contract)
+│   │   │   └── api.ts                  (DD-2: ALL TypeScript interfaces)
+│   │   ├── api/                        (DD-12: typed API client)
+│   │   │   └── client.ts              (all fetch functions, typed with api.ts)
+│   │   ├── workers/
+│   │   │   └── layoutWorker.js         (7A: dagre + d3-force in background thread)
+│   │   ├── utils/
+│   │   │   ├── addressValidator.js     (1A)
+│   │   │   └── formatters.js           (1G: BigInt, hash truncation, USD formatting)
+│   │   └── App.jsx                     (QueryClientProvider + Zustand providers)
+│   ├── package.json
+│   └── vite.config.js
+│
+├── backend/
+│   ├── app/
+│   │   ├── main.py                     (FastAPI app, CORS, lifespan)
+│   │   ├── config.py                   (Pydantic Settings: rates, finality, dust floors)
+│   │   ├── errors.py                   (ProviderError)
+│   │   ├── rate_limiter.py             (slowapi — inbound)
+│   │   ├── outbound_limiter.py         (aiolimiter — global token buckets, no 4byte)
+│   │   ├── routers/
+│   │   │   ├── lookup.py               (Step 1)
+│   │   │   ├── trace.py                (Step 5: POST create + GET stream + POST cancel)
+│   │   │   ├── labels.py               (Step 3)
+│   │   │   ├── risk.py                 (Step 4: scores + exposure + clusters)
+│   │   │   ├── prices.py               (Step 1I: POST /api/prices/enrich — async USD)
+│   │   │   ├── admin.py                (rate-status, label-status)
+│   │   │   └── cases.py                (Step 10)
+│   │   ├── providers/
+│   │   │   ├── base.py                 (ABC + _rate_limited_request + @retry + _apply_dust_floor)
+│   │   │   ├── evm_base.py             (Step 9: shared Etherscan-compatible base)
+│   │   │   ├── bitcoin.py              (Blockstream)
+│   │   │   ├── ethereum.py             (Etherscan: txlist + tokentx + internal w/ quirks)
+│   │   │   ├── bsc.py                  (Step 9)
+│   │   │   ├── polygon.py              (Step 9)
+│   │   │   ├── arbitrum.py             (Step 9)
+│   │   │   ├── optimism.py             (Step 9)
+│   │   │   ├── tron.py                 (Step 9)
+│   │   │   ├── solana.py               (Step 9)
+│   │   │   └── bridges.py              (Step 9)
+│   │   ├── services/
+│   │   │   ├── risk.py                 (Step 4A: scoring engine)
+│   │   │   ├── exposure.py             (Step 4B: % exposure mapping)
+│   │   │   ├── peeling.py              (Step 4C: peeling chain detection)
+│   │   │   ├── clustering.py           (Step 4D: Common Input Ownership + Union-Find)
+│   │   │   ├── tracer.py               (Step 5: BFS + SSE push + budget)
+│   │   │   ├── change_detect.py        (1E: reprioritized BTC heuristics)
+│   │   │   ├── spam_filter.py          (1D: zero-value + poisoning)
+│   │   │   ├── method_decoder.py       (1H: LOCAL-ONLY 4byte lookup, no live API)
+│   │   │   ├── price_history.py        (1I: CoinGecko historical price + cache)
+│   │   │   └── anomaly.py              (8E: unusual activity detector)
+│   │   ├── jobs/
+│   │   │   ├── trace_jobs.py           (Step 5: job store + TraceJob class)
+│   │   │   ├── label_sync.py           (Step 3 + 1H-0: labels + 4byte bulk download)
+│   │   │   └── ofac_diff.py            (Step 3)
+│   │   ├── models/
+│   │   │   ├── __init__.py            (ORM-6: imports ALL models for Alembic)
+│   │   │   ├── base.py               (ORM-2: SQLAlchemy DeclarativeBase)
+│   │   │   ├── schemas.py            (Pydantic: API request/response — DD contract)
+│   │   │   ├── label.py              (ORM-4: SQLAlchemy Label model)
+│   │   │   ├── risk_score.py         (SQLAlchemy RiskScore model)
+│   │   │   ├── cached_transaction.py (SQLAlchemy CachedTransaction model)
+│   │   │   ├── method_signature.py   (SQLAlchemy MethodSignature model)
+│   │   │   ├── historical_price.py   (SQLAlchemy HistoricalPrice model)
+│   │   │   ├── cluster.py            (SQLAlchemy Cluster model)
+│   │   │   ├── investigation.py      (Step 10: SQLAlchemy Investigation + Note + AuditLog)
+│   │   │   └── trace_job.py          (SQLAlchemy TraceJob model)
+│   │   └── db.py                       (aiosqlite + WAL → PostgreSQL)
+│   ├── tests/
+│   │   ├── conftest.py                 (vcrpy setup)
+│   │   ├── cassettes/
+│   │   │   ├── etherscan_binance.yaml
+│   │   │   ├── etherscan_internal_quirks.yaml   (txlistinternal edge cases)
+│   │   │   ├── blockstream_btc.yaml
+│   │   │   ├── coingecko_historical.yaml
+│   │   │   └── ...
+│   │   ├── fixtures.py
+│   │   ├── test_lookup.py
+│   │   ├── test_trace.py
+│   │   ├── test_trace_sse.py
+│   │   ├── test_risk.py
+│   │   ├── test_exposure.py
+│   │   ├── test_peeling.py
+│   │   ├── test_clustering.py
+│   │   ├── test_labels.py
+│   │   ├── test_spam_filter.py
+│   │   ├── test_dust_floor.py
+│   │   ├── test_change_detect.py
+│   │   ├── test_finality.py
+│   │   ├── test_method_decoder.py
+│   │   ├── test_price_history.py
+│   │   ├── test_price_enrichment.py    (async price decoupling tests)
+│   │   ├── test_precision.py
+│   │   ├── test_recharts_compat.py     (BigInt → Number casting tests)
+│   │   ├── test_sse_deltas.py          (SSE payload saturation tests)
+│   │   ├── test_imperative_graph.py   (addNode/addEdges bypasses React render cycle)
+│   │   ├── test_renderer_lock.py      (renderer never switches mid-stream)
+│   │   └── test_rate_limiter.py
+│   ├── alembic/
+│   └── requirements.txt
+│
+├── data/
+│   ├── labels/
+│   ├── sanctions/
+│   ├── 4byte_signatures.csv            (1H-0: bulk download from 4byte.directory)
+│   └── bridge_contracts.json
+│
+└── docs/
+    ├── data_dictionary.md              (DD-1: master field names, Pydantic + TypeScript)
+    ├── test_fixtures.md
+    ├── api.md
+    ├── scoring_rules.md
+    ├── clustering_logic.md
+    ├── exposure_methodology.md
+    └── architecture.md
