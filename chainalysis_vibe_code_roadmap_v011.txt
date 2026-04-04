@@ -1741,8 +1741,8 @@ Goal: Automated tracing — "follow the money" N hops deep.
 
 --- 5E: Frontend Integration ---
 
-  5E-1  [ ] Build TraceControls.jsx (direction, hops, min_value, pruning, sampling)
-  5E-2  [ ] Implement SSE client in hooks/useTraceStream.js:
+  5E-1  [x] Build TraceControls.jsx (direction, hops, min_value, pruning, sampling)
+  5E-2  [x] Implement SSE client in hooks/useTraceStream.js:
 
               ⚠️  BUG PREVENTION: React State Thrashing on SSE Deltas (UI Freeze)
 
@@ -1838,7 +1838,7 @@ Goal: Automated tracing — "follow the money" N hops deep.
                 return { progress, metadata, status, startTrace, cancelTrace }
               }
 
-  5E-3  [ ] Build GraphView.jsx with forwardRef imperative handle:
+  5E-3  [x] Build GraphView.jsx with forwardRef imperative handle:
               const GraphView = forwardRef((props, ref) => {
                 const cyRef = useRef(null) // or sigmaRef
 
@@ -1871,7 +1871,7 @@ Goal: Automated tracing — "follow the money" N hops deep.
               - Cytoscape: use cy.layout().run() with animate:true for smooth transition
               - Sigma: batch position updates from worker, apply in one frame
 
-  5E-5  [ ] Build TraceProgress.jsx:
+  5E-5  [x] Build TraceProgress.jsx:
               - Reads from the throttled React state (updates once per second)
               - "Tracing hop 2 of 3..."
               - "Found 147 addresses, 289 edges"
@@ -1884,7 +1884,7 @@ Goal: Automated tracing — "follow the money" N hops deep.
               - Update FlowTree every 2 seconds from graphRef.current.getGraph()
               - Do NOT update FlowTree on every SSE event
 
-  5E-7  [ ] Show pruning and sampling info
+  5E-7  [x] Show pruning and sampling info
   5E-8  [ ] When peeling_chain_detected event arrives, show alert:
               "Peeling chain detected: 14 hops, 2.3 BTC extracted to 5 exchanges"
 

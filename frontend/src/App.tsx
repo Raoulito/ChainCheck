@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AddressInput } from './components/AddressInput';
@@ -10,7 +10,12 @@ import { ErrorBanner } from './components/ErrorBanner';
 import { Breadcrumb } from './components/Breadcrumb';
 import { RiskBadge } from './components/RiskBadge';
 import { ExposureChart } from './components/ExposureChart';
+import { TraceControls } from './components/TraceControls';
+import { TraceProgress } from './components/TraceProgress';
+import { GraphView } from './components/GraphView';
+import type { GraphHandle } from './components/GraphView';
 import { useLookup, useRiskScore, useExposure } from './api/hooks';
+import { useTraceStream } from './hooks/useTraceStream';
 import { useTraceSession } from './stores/traceSessionStore';
 
 const queryClient = new QueryClient({
@@ -29,6 +34,8 @@ function Explorer() {
   const [address, setAddress] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const { push } = useTraceSession();
+  const graphRef = useRef<GraphHandle>(null);
+  const { progress, metadata, status: traceStatus, startTracing, cancelTracing } = useTraceStream(graphRef);
 
   const { data, isLoading, error, refetch } = useLookup(chain, address, page);
   const { data: riskData } = useRiskScore(address, chain);
@@ -121,6 +128,17 @@ function Explorer() {
                 <ExposureChart data={exposureData as { direct_exposure: Record<string, string>; indirect_exposure: Record<string, string>; total_volume_analyzed: string; hops_analyzed: number }} />
               </div>
             )}
+
+            {/* Trace */}
+            <TraceControls
+              address={data.address}
+              chain={data.chain}
+              onStartTrace={startTracing}
+              isTracing={traceStatus === 'streaming'}
+              onCancel={cancelTracing}
+            />
+            <TraceProgress progress={progress} status={traceStatus} metadata={metadata} />
+            <GraphView ref={graphRef} />
 
             {/* Filters */}
             <FilterBar
