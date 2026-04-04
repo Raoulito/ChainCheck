@@ -6,6 +6,8 @@ import { truncateHash, truncateAddress, formatTimestamp, formatValue, formatUsd,
 import { SpamTag } from './SpamTag';
 import { FailedTag } from './FailedTag';
 import { UnconfirmedTag } from './UnconfirmedTag';
+import { TxDetail } from './TxDetail';
+import { AddressHoverCard } from './AddressHoverCard';
 
 interface TxTableProps {
   transactions: NormalizedTx[];
@@ -32,6 +34,7 @@ export function TxTable({
   const { showSpam, showFailed } = useFilterStore();
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [selectedTx, setSelectedTx] = useState<NormalizedTx | null>(null);
 
   const enrichMutation = usePriceEnrichment(chain, address);
 
@@ -90,6 +93,17 @@ export function TxTable({
 
   return (
     <div>
+      {selectedTx && (
+        <TxDetail
+          tx={selectedTx}
+          chain={chain}
+          onClose={() => setSelectedTx(null)}
+          onAddressClick={(c, a) => {
+            setSelectedTx(null);
+            onAddressClick(c, a);
+          }}
+        />
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-gray-400 uppercase border-b border-gray-700">
@@ -122,6 +136,7 @@ export function TxTable({
                 chain={chain}
                 lookupAddress={address}
                 onAddressClick={onAddressClick}
+                onSelect={() => setSelectedTx(tx)}
               />
             ))}
             {sorted.length === 0 && (
@@ -165,11 +180,13 @@ function TxRow({
   chain,
   lookupAddress,
   onAddressClick,
+  onSelect,
 }: {
   tx: NormalizedTx;
   chain: string;
   lookupAddress: string;
   onAddressClick: (chain: string, address: string) => void;
+  onSelect: () => void;
 }) {
   const isFailed = tx.status === 'failed';
   const rowClass = isFailed ? 'opacity-50 line-through' : '';
@@ -180,7 +197,7 @@ function TxRow({
       : tx.from_address?.toLowerCase() !== lookupAddress.toLowerCase();
 
   return (
-    <tr className={`hover:bg-gray-800/50 ${rowClass}`}>
+    <tr className={`hover:bg-gray-800/50 cursor-pointer ${rowClass}`} onClick={onSelect}>
       <td className="px-3 py-3 font-mono text-xs">
         <a
           href={chain === 'eth' ? `https://etherscan.io/tx/${tx.tx_hash}` : `https://blockstream.info/tx/${tx.tx_hash}`}
@@ -198,24 +215,28 @@ function TxRow({
       </td>
       <td className="px-3 py-3 font-mono text-xs">
         {tx.from_address ? (
-          <button
-            onClick={() => onAddressClick(chain, tx.from_address!)}
-            className="text-blue-400 hover:text-blue-300"
-          >
-            {truncateAddress(tx.from_address)}
-          </button>
+          <AddressHoverCard address={tx.from_address} chain={chain} onAddressClick={onAddressClick}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onAddressClick(chain, tx.from_address!); }}
+              className="text-blue-400 hover:text-blue-300"
+            >
+              {truncateAddress(tx.from_address)}
+            </button>
+          </AddressHoverCard>
         ) : (
           <span className="text-gray-600">—</span>
         )}
       </td>
       <td className="px-3 py-3 font-mono text-xs">
         {tx.to_address ? (
-          <button
-            onClick={() => onAddressClick(chain, tx.to_address!)}
-            className="text-blue-400 hover:text-blue-300"
-          >
-            {truncateAddress(tx.to_address)}
-          </button>
+          <AddressHoverCard address={tx.to_address} chain={chain} onAddressClick={onAddressClick}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onAddressClick(chain, tx.to_address!); }}
+              className="text-blue-400 hover:text-blue-300"
+            >
+              {truncateAddress(tx.to_address)}
+            </button>
+          </AddressHoverCard>
         ) : (
           <span className="text-gray-600">—</span>
         )}

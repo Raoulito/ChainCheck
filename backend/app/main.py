@@ -15,6 +15,7 @@ from app.models.base import Base
 from app.rate_limiter import limiter
 from app.routers.lookup import router as lookup_router
 from app.routers.prices import router as prices_router
+from app.routers.labels import router as labels_router
 
 logging.basicConfig(level=getattr(logging, config.log_level))
 logger = logging.getLogger(__name__)
@@ -35,6 +36,13 @@ async def lifespan(app: FastAPI):
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Seed labels on first startup
+    from app.jobs.label_sync import run_label_sync
+    try:
+        await run_label_sync()
+    except Exception as exc:
+        logger.warning("Initial label sync failed (non-fatal): %s", exc)
 
     logger.info("ChainScope backend started")
     yield
@@ -77,6 +85,7 @@ async def validation_error_handler(request: Request, exc: ValidationError):
 # Routers
 app.include_router(lookup_router, prefix="/api")
 app.include_router(prices_router, prefix="/api")
+app.include_router(labels_router, prefix="/api")
 
 
 @app.get("/api/health")

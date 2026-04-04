@@ -7,6 +7,7 @@ import { StatsHeader } from './components/StatsHeader';
 import { FilterBar } from './components/FilterBar';
 import { TxTable } from './components/TxTable';
 import { ErrorBanner } from './components/ErrorBanner';
+import { Breadcrumb } from './components/Breadcrumb';
 import { useLookup } from './api/hooks';
 import { useTraceSession } from './stores/traceSessionStore';
 
@@ -56,6 +57,7 @@ function Explorer() {
 
         {/* Search */}
         <AddressInput onSubmit={handleSubmit} isLoading={isLoading} />
+        <Breadcrumb onNavigate={handleAddressClick} />
         {!data && !isLoading && <ExampleLookups onSelect={handleSubmit} />}
 
         {/* Loading skeleton */}

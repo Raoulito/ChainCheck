@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { lookupAddress, enrichPrices } from './client';
-import type { LookupResponse, PriceEnrichRequest } from '../types/api';
+import { lookupAddress, enrichPrices, batchLabels } from './client';
+import type { LookupResponse, PriceEnrichRequest, LabelInfo } from '../types/api';
 import { timestampToDateStr } from '../utils/formatters';
 
 export function useLookup(chain: string | null, address: string | null, page: number = 1) {
@@ -37,5 +37,14 @@ export function usePriceEnrichment(chain: string | null, address: string | null)
         }
       );
     },
+  });
+}
+
+export function useLabels(addresses: string[]) {
+  return useQuery({
+    queryKey: ['labels', addresses],
+    queryFn: () => batchLabels(addresses),
+    enabled: addresses.length > 0,
+    staleTime: 10 * 60 * 1000,
   });
 }
