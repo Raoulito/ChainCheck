@@ -2145,8 +2145,8 @@ Goal: Add temporal analysis alongside the graph.
   This applies to EVERY Recharts component in Steps 8A through 8D.
   Precision loss is sub-pixel and visually imperceptible on a chart.
 
-  8A-1  [ ] Install recharts
-  8A-2  [ ] Build TimelineChart.jsx:
+  8A-1  [x] Install recharts
+  8A-2  [x] Build TimelineChart.jsx:
               - Convert BigInt values using bigIntToChartNumber() BEFORE passing
                 to Recharts data prop:
                   const chartData = txs.map(tx => ({
@@ -2158,18 +2158,18 @@ Goal: Add temporal analysis alongside the graph.
               - Line overlay: cumulative balance (also Number-cast)
               - Granularity selector: day / week / month
               - Brush selection: drag to select time range
-  8A-3  [ ] Click-to-filter: time range → filters graph + flow tree
-  8A-4  [ ] NEW: dual Y-axis — left axis: native token volume, right axis: USD value
+  8A-3  [x] Click-to-filter: time range → filters graph + flow tree
+  8A-4  [x] NEW: dual Y-axis — left axis: native token volume, right axis: USD value
               (using historical prices from Step 1I)
 
 --- 8B: Activity Heatmap ---
 
-  8B-1  [ ] Build ActivityHeatmap.jsx (hours × days grid)
-  8B-2  [ ] Insight text ("Peak activity: Tuesday 14:00-16:00 UTC")
+  8B-1  [x] Build ActivityHeatmap.jsx (hours × days grid)
+  8B-2  [x] Insight text ("Peak activity: Tuesday 14:00-16:00 UTC")
 
 --- 8C: Balance History ---
 
-  8C-1  [ ] Build BalanceChart.jsx:
+  8C-1  [x] Build BalanceChart.jsx:
               - Compute running balance using BigInt (exact ledger math)
               - Cast final balance-per-date array to Number for Recharts:
                   const chartData = balanceHistory.map(b => ({
@@ -2183,7 +2183,7 @@ Goal: Add temporal analysis alongside the graph.
 
 --- 8D: Aggregate Stats ---
 
-  8D-1  [ ] Build StatsPanel.jsx:
+  8D-1  [x] Build StatsPanel.jsx:
               - Top 10 counterparties by volume (with labels + USD)
               - Most-used tokens (donut)
               - Volume by entity type (stacked bar)
@@ -2195,13 +2195,13 @@ Goal: Add temporal analysis alongside the graph.
 
 --- 8E: Anomaly Detection ---
 
-  8E-1  [ ] Create services/anomaly.py (mean + stddev, flag >2σ)
+  8E-1  [x] Create services/anomaly.py (mean + stddev, flag >2σ)
   8E-2  [ ] Red bands on timeline
   8E-3  [ ] "Unusual activity detected" banner
 
 --- 8F: Layout Integration ---
 
-  8F-1  [ ] Build AnalysisPanel.jsx (tabs: Timeline | Heatmap | Balance | Stats | Exposure)
+  8F-1  [x] Build AnalysisPanel.jsx (tabs: Timeline | Heatmap | Balance | Stats | Exposure)
   8F-2  [ ] Sync all views: time range updates everything
   8F-3  [ ] Responsive: tabs → accordion on small screens
 

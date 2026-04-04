@@ -16,6 +16,7 @@ import { GraphView } from './components/GraphView';
 import type { GraphHandle } from './components/GraphView';
 import { FlowTree } from './components/FlowTree';
 import { TraceFilterControls } from './components/TraceFilterControls';
+import { AnalysisPanel } from './components/AnalysisPanel';
 import { useLookup, useRiskScore, useExposure } from './api/hooks';
 import { useTraceStream } from './hooks/useTraceStream';
 import { useTraceSession } from './stores/traceSessionStore';
@@ -182,6 +183,14 @@ function Explorer() {
                 />
               </>
             )}
+
+            {/* Analysis panel */}
+            <AnalysisPanel
+              transactions={data.transactions}
+              address={data.address}
+              chain={data.chain}
+              onAddressClick={handleAddressClick}
+            />
 
             {/* Filters */}
             <FilterBar
