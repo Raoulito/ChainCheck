@@ -148,7 +148,7 @@ function Explorer() {
               onCancel={cancelTracing}
             />
             <TraceProgress progress={progress} status={traceStatus} metadata={metadata} />
-            <GraphView ref={graphRef} />
+            <GraphView ref={graphRef} onAddressClick={(addr) => handleAddressClick(data.chain, addr)} />
 
             {/* Flow tree + filters (visible after trace starts) */}
             {traceStatus !== 'idle' && (

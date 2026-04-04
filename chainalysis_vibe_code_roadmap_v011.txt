@@ -1982,9 +1982,9 @@ Goal: Full node-and-edge graph like Chainalysis Reactor.
 
 --- 7A: Web Worker Layout Engine ---
 
-  7A-1  [ ] Create workers/layoutWorker.js (dagre + d3-force in background thread)
-  7A-2  [ ] Create hooks/useGraphLayout.js (worker bridge, returns positions + isComputing)
-  7A-3  [ ] "Computing layout..." overlay while worker runs (UI stays interactive)
+  7A-1  [x] Create workers/layoutWorker.js (dagre + d3-force in background thread)
+  7A-2  [x] Create hooks/useGraphLayout.js (worker bridge, returns positions + isComputing)
+  7A-3  [x] "Computing layout..." overlay while worker runs (UI stays interactive)
 
 --- 7B: Rendering Engine ---
 
@@ -2023,13 +2023,13 @@ Goal: Full node-and-edge graph like Chainalysis Reactor.
                   5. Re-runs layout via Web Worker
                 This is a deliberate user action, not an automatic threshold.
 
-  7B-2  [ ] Both renderers receive pre-computed positions from Web Worker
-  7B-3  [ ] Install cytoscape (NOT cytoscape-dagre), sigma + graphology
-  7B-4  [ ] Build GraphView.jsx wrapper:
+  7B-2  [x] Both renderers receive pre-computed positions from Web Worker
+  7B-3  [x] Install cytoscape (NOT cytoscape-dagre), sigma + graphology
+  7B-4  [x] Build GraphView.jsx wrapper:
               - Props: rendererType (locked), nodes, edges, positions
               - rendererType is immutable after first render
               - Internally delegates to CytoscapeGraph.jsx or SigmaGraph.jsx
-  7B-5  [ ] Renderer indicator + node count: "Cytoscape (247 nodes)" / "Sigma WebGL (1,203 nodes)"
+  7B-5  [x] Renderer indicator + node count: "Cytoscape (247 nodes)" / "Sigma WebGL (1,203 nodes)"
 
   7B-6  [ ] Update TraceControls.jsx:
               - Add "Expected graph size" selector: "Standard" / "Large investigation"
@@ -2047,7 +2047,7 @@ Goal: Full node-and-edge graph like Chainalysis Reactor.
 
 --- 7C: Node & Edge Mapping ---
 
-  7C-1  [ ] Nodes:
+  7C-1  [x] Nodes:
               - Size: log(volume)
               - Color: risk gradient (green → red)
               - Shape: ● unknown, ⬡ exchange, ◆ DeFi, ▲ bridge, ■ sanctioned, ⬠ mixer
@@ -2056,7 +2056,7 @@ Goal: Full node-and-edge graph like Chainalysis Reactor.
               - NEW: small chain icon badge (for multi-chain, Step 9)
               - NEW: 📎 cluster icon if BTC address belongs to a cluster (Step 4D)
 
-  7C-2  [ ] Edges:
+  7C-2  [x] Edges:
               - Thickness: log(value)
               - Label: amount + token + USD value (historical)
               - Color: grey default, red if sanctioned
