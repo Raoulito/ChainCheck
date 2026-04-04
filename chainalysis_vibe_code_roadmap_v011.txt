@@ -2224,16 +2224,16 @@ Goal: Add more chains using the same architecture.
 
 --- 9A: Provider Interface ---
 
-  9A-1  [ ] Finalize ChainProvider ABC (get_transactions, get_tx_detail,
+  9A-1  [x] Finalize ChainProvider ABC (get_transactions, get_tx_detail,
               validate_address, get_balance, chain_id, address_pattern, explorer_url)
-  9A-2  [ ] Provider registry with auto-detect
+  9A-2  [x] Provider registry with auto-detect
 
 --- 9B: EVM-Compatible Providers ---
 
-  9B-1  [ ] Create providers/evm_base.py (shared Etherscan-compatible base)
+  9B-1  [x] Create providers/evm_base.py (shared Etherscan-compatible base)
               - All calls through correct global token bucket
               - Reuse block-based pagination, spam filter, dust floor, method decoding
-  9B-2  [ ] BSC, Polygon, Arbitrum, Optimism: extending evm_base
+  9B-2  [x] BSC, Polygon, Arbitrum, Optimism: extending evm_base
 
 --- 9C: Non-EVM Providers ---
 
@@ -2242,8 +2242,8 @@ Goal: Add more chains using the same architecture.
 
 --- 9D: Frontend Chain Support ---
 
-  9D-1  [ ] Extend addressValidator.js (Tron T..., Solana base58)
-  9D-2  [ ] ChainSelector.jsx for 0x disambiguation
+  9D-1  [x] Extend addressValidator.js (Tron T..., Solana base58)
+  9D-2  [x] ChainSelector.jsx for 0x disambiguation
   9D-3  [ ] Chain icons throughout
   9D-4  [ ] Graph nodes carry chain badge
 

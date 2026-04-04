@@ -15,8 +15,7 @@ from app.models.schemas import (
     LookupResponse,
     NormalizedTx,
 )
-from app.providers.bitcoin import BitcoinProvider
-from app.providers.ethereum import EthereumProvider
+from app.providers.registry import PROVIDER_REGISTRY as PROVIDERS
 from app.rate_limiter import limiter
 from app.services.address_validator import validate_address
 from app.services.change_detect import detect_change_output
@@ -26,11 +25,6 @@ from app.services.spam_filter import apply_spam_filter
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-PROVIDERS = {
-    "btc": BitcoinProvider,
-    "eth": EthereumProvider,
-}
 
 
 @router.get("/lookup/{chain}/{address}")

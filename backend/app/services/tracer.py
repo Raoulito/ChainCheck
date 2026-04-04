@@ -10,15 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import config
 from app.jobs.trace_jobs import TraceJob, JobStatus
 from app.models.label import Label
-from app.providers.bitcoin import BitcoinProvider
-from app.providers.ethereum import EthereumProvider
+from app.providers.registry import PROVIDER_REGISTRY as PROVIDERS
 
 logger = logging.getLogger(__name__)
-
-PROVIDERS = {
-    "btc": BitcoinProvider,
-    "eth": EthereumProvider,
-}
 
 # API budget split per hop (percentages)
 HOP_BUDGET = {1: 0.40, 2: 0.35, 3: 0.25}
