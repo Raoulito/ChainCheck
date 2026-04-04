@@ -1896,24 +1896,24 @@ Goal: Automated tracing — "follow the money" N hops deep.
 
 --- 5G: Testing ---
 
-  5G-1  [ ] Test: POST returns job_id instantly
-  5G-2  [ ] Test: SSE delivers events in order
-  5G-3  [ ] Test: completed event contains valid graph
-  5G-4  [ ] Test: cancel returns partial results
-  5G-5  [ ] Test: max_txs_per_node caps correctly
-  5G-6  [ ] Test: API budget distributed across hops
-  5G-7  [ ] Test: pruning works
-  5G-8  [ ] Test: concurrent traces share global token bucket
+  5G-1  [x] Test: POST returns job_id instantly
+  5G-2  [x] Test: SSE delivers events in order
+  5G-3  [x] Test: completed event contains valid graph
+  5G-4  [x] Test: cancel returns partial results
+  5G-5  [x] Test: max_txs_per_node caps correctly
+  5G-6  [x] Test: API budget distributed across hops
+  5G-7  [x] Test: pruning works
+  5G-8  [x] Test: concurrent traces share global token bucket
   5G-9  [ ] Test: heartbeat prevents timeout
-  5G-10 [ ] Test: dust floor applied within BFS
+  5G-10 [x] Test: dust floor applied within BFS
   5G-11 [ ] Test: peeling chain detection emits SSE event
-  5G-12 [ ] Test: SSE "completed" event contains ONLY metadata, no nodes/edges
+  5G-12 [x] Test: SSE "completed" event contains ONLY metadata, no nodes/edges
   5G-13 [ ] Test: imperative addNode() pushes to Cytoscape without React re-render
               (measure: React render count stays at 0 during 100 rapid addNode calls)
   5G-14 [ ] Test: TraceProgress counters update exactly once per second (not per event)
   5G-15 [ ] Test: cancel button remains responsive during a 500-node trace
               (click latency < 100ms at any point during streaming)
-  5G-16 [ ] Test: edge batching sends max 10 edges per SSE event
+  5G-16 [x] Test: edge batching sends max 10 edges per SSE event
   5G-17 [ ] Test: FlowTree updates every 2s from getGraph(), not per SSE event
 
 Outcome: Streaming, non-blocking fund-flow tracing with pattern detection.

@@ -201,6 +201,10 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
     job.total_nodes = len(nodes)
     job.total_edges = len(edges)
     job.trace_time_ms = elapsed
+
+    if job.status == JobStatus.CANCELLED:
+        return
+
     job.status = JobStatus.COMPLETED
 
     await _emit(job, "completed", {
