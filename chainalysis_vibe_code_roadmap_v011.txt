@@ -1434,15 +1434,15 @@ Goal: Each address gets a risk score, an exposure breakdown, and known
 
 --- 4A: Scoring Engine ---
 
-  4A-1  [ ] Create services/risk.py with RiskScorer class
-  4A-2  [ ] Define configurable rules:
+  4A-1  [x] Create services/risk.py with RiskScorer class
+  4A-2  [x] Define configurable rules:
               SEVERE: is_sanctioned (100)
               HIGH:   1hop_sanctioned (80), mixer_interaction (75)
               MEDIUM: gambling (40), darknet (50)
               LOW:    no_flags (0)
-  4A-3  [ ] Implement each check against labels + tx history
-  4A-4  [ ] Aggregate: highest severity wins
-  4A-5  [ ] Return detailed breakdown with evidence
+  4A-3  [x] Implement each check against labels + tx history
+  4A-4  [x] Aggregate: highest severity wins
+  4A-5  [x] Return detailed breakdown with evidence
 
 --- 4B: Risk Exposure Summary ---
 
