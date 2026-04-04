@@ -2273,7 +2273,7 @@ Goal: Save investigations, add notes, collaborate.
 --- 10A: Database Migration ---
 
   10A-1  [ ] Alembic setup, SQLite → PostgreSQL migration
-  10A-2  [ ] Tables: users, investigations, snapshots, notes, tags, audit_log,
+  10A-2  [x] Tables: users, investigations, snapshots, notes, tags, audit_log,
                cached_transactions, labels, risk_scores, clusters,
                historical_prices, method_signatures, exposure_reports
   10A-3  [ ] Migrate all cached data
@@ -2281,25 +2281,25 @@ Goal: Save investigations, add notes, collaborate.
 
 --- 10B: Authentication ---
 
-  10B-1  [ ] JWT auth (fastapi-users or manual)
-  10B-2  [ ] Register, login, protected routes
+  10B-1  [x] JWT auth (fastapi-users or manual)
+  10B-2  [x] Register, login, protected routes
 
 --- 10C: Investigation CRUD ---
 
-  10C-1  [ ] Create, list, load, update, delete investigations
-  10C-2  [ ] Snapshot system (version history)
+  10C-1  [x] Create, list, load, update, delete investigations
+  10C-2  [x] Snapshot system (version history)
   10C-3  [ ] Auto-save (debounced, every 30s)
 
 --- 10D: Notes & Tags ---
 
-  10D-1  [ ] Notes with Markdown on any address or tx
-  10D-2  [ ] Tags searchable across investigations
+  10D-1  [x] Notes with Markdown on any address or tx
+  10D-2  [x] Tags searchable across investigations
   10D-3  [ ] "Flag for review" quick-action
 
 --- 10E: Audit Log ---
 
-  10E-1  [ ] Append-only audit_log table
-  10E-2  [ ] Log all user actions with timestamps
+  10E-1  [x] Append-only audit_log table
+  10E-2  [x] Log all user actions with timestamps
   10E-3  [ ] Export audit log as CSV
 
 --- 10F: Export ---
@@ -2313,7 +2313,7 @@ Goal: Save investigations, add notes, collaborate.
 
 --- 10G: Frontend ---
 
-  10G-1  [ ] CaseManager.jsx page
+  10G-1  [x] CaseManager.jsx page
   10G-2  [ ] Auto-save integration
   10G-3  [ ] Notes sidebar
   10G-4  [ ] Investigation header with metadata

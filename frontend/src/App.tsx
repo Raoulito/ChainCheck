@@ -17,6 +17,7 @@ import type { GraphHandle } from './components/GraphView';
 import { FlowTree } from './components/FlowTree';
 import { TraceFilterControls } from './components/TraceFilterControls';
 import { AnalysisPanel } from './components/AnalysisPanel';
+import { CaseManager } from './components/CaseManager';
 import { useLookup, useRiskScore, useExposure } from './api/hooks';
 import { useTraceStream } from './hooks/useTraceStream';
 import { useTraceSession } from './stores/traceSessionStore';
@@ -76,7 +77,12 @@ function Explorer() {
         {/* Search */}
         <AddressInput onSubmit={handleSubmit} isLoading={isLoading} />
         <Breadcrumb onNavigate={handleAddressClick} />
-        {!data && !isLoading && <ExampleLookups onSelect={handleSubmit} />}
+        {!data && !isLoading && (
+          <>
+            <ExampleLookups onSelect={handleSubmit} />
+            <CaseManager onOpenInvestigation={(_id, addr, ch) => handleSubmit(ch, addr)} />
+          </>
+        )}
 
         {/* Loading skeleton */}
         {isLoading && (

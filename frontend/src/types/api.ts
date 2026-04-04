@@ -101,3 +101,31 @@ export interface TraceJobResponse {
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   stream_url: string;
 }
+
+export interface AuthResponse {
+  token: string;
+  user_id: string;
+  email: string;
+  display_name: string;
+}
+
+export interface InvestigationSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  root_address: string;
+  root_chain: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  version: number;
+}
+
+export interface NoteInfo {
+  id: string;
+  target_type: string;
+  target_id: string | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}

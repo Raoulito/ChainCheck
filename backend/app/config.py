@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./chainscope.db"
 
+    # Auth
+    jwt_secret: str = ""
+
     # Logging
     log_level: str = "INFO"
 
