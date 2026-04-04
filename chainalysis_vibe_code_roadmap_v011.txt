@@ -1638,19 +1638,19 @@ Goal: Automated tracing — "follow the money" N hops deep.
 
 --- 5A: Job Management ---
 
-  5A-1  [ ] Install sse-starlette
-  5A-2  [ ] Create app/jobs/trace_jobs.py (in-memory job store)
-  5A-3  [ ] POST /api/trace → returns job_id instantly (<100ms)
-  5A-4  [ ] Apply slowapi: 5 trace jobs/min/IP
-  5A-5  [ ] Launch BFS as asyncio.create_task(run_trace(job))
+  5A-1  [x] Install sse-starlette
+  5A-2  [x] Create app/jobs/trace_jobs.py (in-memory job store)
+  5A-3  [x] POST /api/trace → returns job_id instantly (<100ms)
+  5A-4  [x] Apply slowapi: 5 trace jobs/min/IP
+  5A-5  [x] Launch BFS as asyncio.create_task(run_trace(job))
 
 --- 5B: SSE Streaming Endpoint ---
 
-  5B-1  [ ] GET /api/trace/{job_id}/stream → EventSourceResponse
+  5B-1  [x] GET /api/trace/{job_id}/stream → EventSourceResponse
 
   ⚠️  BUG PREVENTION: SSE Payload Saturation (Memory Bloat)
 
-  5B-2  [ ] SSE events must stream DELTAS ONLY — never the full graph.
+  5B-2  [x] SSE events must stream DELTAS ONLY — never the full graph.
 
               If the trace discovers 500 nodes and 1,000 edges, pushing the
               entire graph structure on every iteration will saturate the
@@ -1705,22 +1705,22 @@ Goal: Automated tracing — "follow the money" N hops deep.
               data: { "error": "...", "partial": true }
               // Frontend uses whatever deltas it accumulated so far.
 
-  5B-3  [ ] Heartbeat every 15s
-  5B-4  [ ] Client disconnect → cancel background task
+  5B-3  [x] Heartbeat every 15s
+  5B-4  [x] Client disconnect → cancel background task
 
 --- 5C: Cancel Endpoint ---
 
-  5C-1  [ ] POST /api/trace/{job_id}/cancel → partial results
+  5C-1  [x] POST /api/trace/{job_id}/cancel → partial results
 
 --- 5D: BFS Trace Engine ---
 
   ⚠️  BUG PREVENTION: Multi-Hop BFS vs. API Limits
   (max_txs_per_node cap + hop-based API budgeting from v0.0.0.7)
 
-  5D-1  [ ] Create services/tracer.py with BFSTracer class
-  5D-2  [ ] max_txs_per_node hard cap (default 50)
-  5D-3  [ ] API budget split: hop 1 (40%), hop 2 (35%), hop 3 (25%)
-  5D-4  [ ] BFS loop with delta-only SSE events:
+  5D-1  [x] Create services/tracer.py with BFSTracer class
+  5D-2  [x] max_txs_per_node hard cap (default 50)
+  5D-3  [x] API budget split: hop 1 (40%), hop 2 (35%), hop 3 (25%)
+  5D-4  [x] BFS loop with delta-only SSE events:
               - Push "node_discovered" for each new node (single node per event)
               - Batch "edge_discovered" events: accumulate edges during one BFS
                 step, push up to 10 per SSE event to reduce overhead
@@ -1728,13 +1728,13 @@ Goal: Automated tracing — "follow the money" N hops deep.
               - NEVER push the full accumulated graph — only deltas
               - On completion: push "completed" with metadata only (counters,
                 pruning info, timing). No nodes/edges in completed event.
-  5D-5  [ ] All provider calls through global token bucket
-  5D-6  [ ] Apply dust floor to fetched txs within BFS (prevent dust from
+  5D-5  [x] All provider calls through global token bucket
+  5D-6  [x] Apply dust floor to fetched txs within BFS (prevent dust from
               polluting the trace graph)
-  5D-7  [ ] During BFS: run peeling chain detection on BTC nodes.
+  5D-7  [x] During BFS: run peeling chain detection on BTC nodes.
               If detected, emit SSE event "peeling_chain_detected" and collapse
               the peeling chain into a single meta-node in the graph result.
-  5D-8  [ ] During BFS: run Common Input Ownership clustering on BTC nodes.
+  5D-8  [x] During BFS: run Common Input Ownership clustering on BTC nodes.
               If an expanded node belongs to a known cluster, optionally expand
               the cluster (fetch txs for sibling addresses in the cluster).
               Configurable: "Expand clusters during trace: yes/no"
@@ -1890,9 +1890,9 @@ Goal: Automated tracing — "follow the money" N hops deep.
 
 --- 5F: Job Cleanup ---
 
-  5F-1  [ ] Auto-expire completed jobs after 30 minutes
-  5F-2  [ ] GET /api/trace/{job_id} for reconnection
-  5F-3  [ ] Limit concurrent trace jobs: max 3 globally
+  5F-1  [x] Auto-expire completed jobs after 30 minutes
+  5F-2  [x] GET /api/trace/{job_id} for reconnection
+  5F-3  [x] Limit concurrent trace jobs: max 3 globally
 
 --- 5G: Testing ---
 
