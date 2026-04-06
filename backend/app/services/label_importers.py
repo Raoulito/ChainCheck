@@ -23,7 +23,7 @@ async def import_ofac_sdn(session: AsyncSession) -> int:
     now = datetime.now(timezone.utc).isoformat()
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             response = await client.get(url)
             if response.status_code != 200:
                 logger.warning("OFAC SDN download failed: %d", response.status_code)

@@ -9,8 +9,8 @@ class PolygonProvider(EvmBaseProvider):
     def provider_name(self) -> str:
         return "polygonscan"
 
-    def _api_base(self) -> str:
-        return "https://api.polygonscan.com/api"
+    def _chain_id_num(self) -> int:
+        return 137  # Polygon Mainnet
 
     def _api_key(self) -> str:
         return config.polygonscan_api_key

@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     dust_floor_eth_wei: str = "10000000000000000"
     dust_floor_btc_sat: str = "10000"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ["../.env", ".env"], "env_file_encoding": "utf-8"}
 
     @property
     def finality(self) -> dict[str, int]:

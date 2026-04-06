@@ -1,4 +1,4 @@
-"""Shared base for all Etherscan-compatible EVM chain providers."""
+"""Shared base for all Etherscan-compatible EVM chain providers (V2 API)."""
 import asyncio
 import logging
 from decimal import Decimal
@@ -8,11 +8,15 @@ from app.providers.base import ChainProvider
 
 logger = logging.getLogger(__name__)
 
+# Etherscan V2 unified endpoint
+ETHERSCAN_V2_BASE = "https://api.etherscan.io/v2/api"
+
 
 class EvmBaseProvider(ChainProvider):
-    """Base provider for any chain with an Etherscan-compatible API."""
+    """Base provider for any chain using Etherscan V2 API."""
 
-    def _api_base(self) -> str:
+    def _chain_id_num(self) -> int:
+        """Return the numeric chain ID for Etherscan V2."""
         raise NotImplementedError
 
     def _api_key(self) -> str:
@@ -24,17 +28,30 @@ class EvmBaseProvider(ChainProvider):
     def _native_decimals(self) -> int:
         return 18
 
+    def _base_params(self) -> dict:
+        """Common params for all Etherscan V2 requests."""
+        return {
+            "chainid": self._chain_id_num(),
+            "apikey": self._api_key(),
+        }
+
     async def get_latest_block(self) -> int:
-        response = await self._rate_limited_request(
-            self._api_base(),
-            params={
-                "module": "proxy",
-                "action": "eth_blockNumber",
-                "apikey": self._api_key(),
-            },
-        )
+        params = {
+            **self._base_params(),
+            "module": "proxy",
+            "action": "eth_blockNumber",
+        }
+        response = await self._rate_limited_request(ETHERSCAN_V2_BASE, params)
         data = response.json()
-        return int(data["result"], 16)
+
+        if data.get("status") == "0":
+            msg = data.get("result", data.get("message", "unknown error"))
+            raise ValueError(f"Etherscan API error: {msg}")
+
+        result = data.get("result", "0x0")
+        if isinstance(result, str) and result.startswith("0x"):
+            return int(result, 16)
+        raise ValueError(f"Unexpected eth_blockNumber response: {data}")
 
     async def fetch_transactions(
         self, address: str, page: int = 1, per_page: int = 50
@@ -96,14 +113,17 @@ class EvmBaseProvider(ChainProvider):
         tx_type: str,
         latest_block: int,
         max_retries: int = 2,
+        max_pages: int = 5,
     ) -> list[NormalizedTx]:
         all_txs: list[NormalizedTx] = []
         start_block = 0
         end_block = latest_block
         page_size = 10000
+        pages_fetched = 0
 
-        while True:
+        while pages_fetched < max_pages:
             params: dict = {
+                **self._base_params(),
                 "module": "account",
                 "action": action,
                 "address": address,
@@ -112,14 +132,14 @@ class EvmBaseProvider(ChainProvider):
                 "page": 1,
                 "offset": page_size,
                 "sort": "asc",
-                "apikey": self._api_key(),
             }
 
+            pages_fetched += 1
             retries = 0
             batch: list[dict] = []
             while retries < max_retries:
                 try:
-                    response = await self._rate_limited_request(self._api_base(), params)
+                    response = await self._rate_limited_request(ETHERSCAN_V2_BASE, params)
                     data = response.json()
 
                     if data.get("status") == "0":
@@ -157,6 +177,12 @@ class EvmBaseProvider(ChainProvider):
             start_block = last_block + 1
             if start_block > end_block:
                 break
+
+        if pages_fetched >= max_pages and len(all_txs) >= page_size:
+            logger.info(
+                "Hit max_pages=%d for %s/%s, returning %d txs (may be partial)",
+                max_pages, action, address[:10], len(all_txs),
+            )
 
         return all_txs
 

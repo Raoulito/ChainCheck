@@ -21,13 +21,26 @@ function computeDagre(
   edges: LayoutEdge[],
 ): Record<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: 'LR', ranksep: 120, nodesep: 60 });
+  g.setGraph({
+    rankdir: 'LR',
+    ranksep: 200,
+    nodesep: 80,
+    edgesep: 40,
+    marginx: 40,
+    marginy: 40,
+  });
   g.setDefaultEdgeLabel(() => ({}));
 
   for (const n of nodes) {
-    g.setNode(n.id, { width: 80, height: 40, label: n.label ?? n.id });
+    g.setNode(n.id, { width: 100, height: 50, label: n.label ?? n.id });
   }
+
+  // Deduplicate edges — dagre handles one edge per pair better
+  const seenEdges = new Set<string>();
   for (const e of edges) {
+    const key = `${e.source}->${e.target}`;
+    if (seenEdges.has(key)) continue;
+    seenEdges.add(key);
     if (g.hasNode(e.source) && g.hasNode(e.target)) {
       g.setEdge(e.source, e.target);
     }
@@ -49,7 +62,7 @@ function computeCircular(
   nodes: LayoutNode[],
 ): Record<string, { x: number; y: number }> {
   const positions: Record<string, { x: number; y: number }> = {};
-  const radius = Math.max(100, nodes.length * 15);
+  const radius = Math.max(150, nodes.length * 25);
   nodes.forEach((n, i) => {
     const angle = (2 * Math.PI * i) / nodes.length;
     positions[n.id] = {

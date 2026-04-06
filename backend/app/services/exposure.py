@@ -40,6 +40,12 @@ async def compute_exposure(
     """
     report = ExposureReport()
 
+    # Check if the address itself is labeled (sanctioned, mixer, etc.)
+    own_label_result = await session.execute(
+        select(Label).where(Label.address == address.lower())
+    )
+    own_label = own_label_result.scalar_one_or_none()
+
     # Collect all counterparty addresses
     counterparty_volumes: dict[str, Decimal] = {}
     total_volume = Decimal("0")
@@ -64,6 +70,9 @@ async def compute_exposure(
 
     if total_volume == 0:
         report.total_volume_analyzed = "0"
+        # Even with no volume, flag the address's own status
+        if own_label and own_label.entity_type in ("sanctioned", "mixer", "darknet"):
+            report.direct_exposure = {own_label.entity_type: "100%", "clean": "0%"}
         return report
 
     report.total_volume_analyzed = str(total_volume)
@@ -85,6 +94,11 @@ async def compute_exposure(
             volume_by_type[entity_type] = volume_by_type.get(entity_type, Decimal("0")) + volume
             labeled_volume += volume
 
+    # If the address itself is risky, all its volume is tainted
+    if own_label and own_label.entity_type in ("sanctioned", "mixer", "darknet"):
+        volume_by_type[own_label.entity_type] = total_volume
+        labeled_volume = total_volume
+
     clean_volume = total_volume - labeled_volume
 
     # Compute percentages
@@ -93,7 +107,7 @@ async def compute_exposure(
         pct = (volume / total_volume * 100).quantize(Decimal("0.1"))
         direct[entity_type] = f"{pct}%"
 
-    clean_pct = (clean_volume / total_volume * 100).quantize(Decimal("0.1"))
+    clean_pct = max(Decimal("0"), (clean_volume / total_volume * 100)).quantize(Decimal("0.1"))
     direct["clean"] = f"{clean_pct}%"
 
     report.direct_exposure = direct

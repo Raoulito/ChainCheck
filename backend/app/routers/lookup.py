@@ -48,7 +48,7 @@ async def lookup_address(
     warnings: list[str] = []
 
     try:
-        txs, total = await provider.fetch_transactions(address, page=1, per_page=10000)
+        txs, total = await provider.fetch_transactions(address, page=page, per_page=per_page)
     finally:
         await provider.close()
 

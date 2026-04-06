@@ -48,13 +48,39 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
     const cyRef = useRef<cytoscape.Core | null>(null);
     const nodesRef = useRef<Map<string, GraphNode>>(new Map());
     const edgesRef = useRef<GraphEdge[]>([]);
+    const onAddressClickRef = useRef(onAddressClick);
     const [nodeCount, setNodeCount] = useState(0);
     const [edgeCount, setEdgeCount] = useState(0);
     const [showLabels, setShowLabels] = useState(true);
     const [layoutType, setLayoutType] = useState<LayoutType>('dagre');
+    const [verbose, setVerbose] = useState(false);
+    const [fullscreen, setFullscreen] = useState(false);
+    const [debugLog, setDebugLog] = useState<string[]>([]);
     const { positions, isComputing, computeLayout } = useGraphLayout();
 
-    // Initialize Cytoscape
+    // Keep callback ref in sync without re-running the effect
+    useEffect(() => {
+      onAddressClickRef.current = onAddressClick;
+    }, [onAddressClick]);
+
+    // Escape key exits fullscreen
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && fullscreen) setFullscreen(false);
+      };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [fullscreen]);
+
+    const log = useCallback((msg: string) => {
+      setDebugLog(prev => {
+        const entry = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        const next = [...prev, entry];
+        return next.length > 100 ? next.slice(-100) : next;
+      });
+    }, []);
+
+    // Initialize Cytoscape once
     useEffect(() => {
       if (!containerRef.current) return;
 
@@ -130,10 +156,10 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         maxZoom: 5,
       });
 
-      // Click handler
+      // Click handler — uses ref to avoid stale closure
       cy.on('tap', 'node', (evt) => {
         const addr = evt.target.data('id');
-        if (addr && onAddressClick) onAddressClick(addr);
+        if (addr && onAddressClickRef.current) onAddressClickRef.current(addr);
       });
 
       // Tooltip popover on hover
@@ -165,7 +191,8 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         cy.destroy();
         cyRef.current = null;
       };
-    }, [onAddressClick]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Apply positions from layout worker
     useEffect(() => {
@@ -198,6 +225,21 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       }
     }, [computeLayout, layoutType]);
 
+    // Auto re-layout when node count crosses thresholds during streaming
+    const lastLayoutCountRef = useRef(0);
+    useEffect(() => {
+      if (nodeCount > 0 && nodeCount !== lastLayoutCountRef.current) {
+        // Layout at 1, 5, 10, 20, 50, 100... or every 10 nodes after 10
+        const thresholds = [1, 3, 5, 10, 20, 50, 100, 200, 500];
+        const shouldLayout = thresholds.includes(nodeCount) ||
+          (nodeCount > 10 && nodeCount % 10 === 0);
+        if (shouldLayout) {
+          lastLayoutCountRef.current = nodeCount;
+          runLayout();
+        }
+      }
+    }, [nodeCount, runLayout]);
+
     const toggleLabels = useCallback(() => {
       const cy = cyRef.current;
       if (!cy) return;
@@ -219,37 +261,59 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       addNode(node: GraphNode) {
         nodesRef.current.set(node.address, node);
         const cy = cyRef.current;
-        if (cy && !cy.getElementById(node.address).length) {
-          const truncAddr = node.address.length > 12
-            ? `${node.address.slice(0, 6)}...${node.address.slice(-4)}`
-            : node.address;
-
-          cy.add({
-            group: 'nodes',
-            data: {
-              id: node.address,
-              displayLabel: node.label ?? truncAddr,
-              fullAddress: node.address,
-              labelText: node.label,
-              hopLevel: node.hop,
-              size: node.hop === 0 ? 40 : Math.max(20, 35 - node.hop * 5),
-              riskColor: node.risk ? RISK_COLORS[node.risk] : undefined,
-            },
-            classes: node.hop === 0 ? 'root' : undefined,
-            position: { x: Math.random() * 400, y: Math.random() * 400 },
-          });
-          setNodeCount(nodesRef.current.size);
+        if (!cy) {
+          log(`WARN: cy not initialized, cannot add node ${node.address.slice(0, 10)}`);
+          return;
         }
+        if (cy.getElementById(node.address).length) {
+          log(`SKIP: node ${node.address.slice(0, 10)} already exists`);
+          return;
+        }
+
+        const truncAddr = node.address.length > 12
+          ? `${node.address.slice(0, 6)}...${node.address.slice(-4)}`
+          : node.address;
+
+        cy.add({
+          group: 'nodes',
+          data: {
+            id: node.address,
+            displayLabel: node.label ?? truncAddr,
+            fullAddress: node.address,
+            labelText: node.label,
+            hopLevel: node.hop,
+            size: node.hop === 0 ? 40 : Math.max(20, 35 - node.hop * 5),
+            riskColor: node.risk ? RISK_COLORS[node.risk] : undefined,
+          },
+          classes: node.hop === 0 ? 'root' : undefined,
+          position: { x: Math.random() * 400, y: Math.random() * 400 },
+        });
+        const newCount = nodesRef.current.size;
+        setNodeCount(newCount);
+        log(`+node hop=${node.hop} ${node.address.slice(0, 10)}... (total: ${newCount})`);
       },
 
       addEdges(edges: GraphEdge[]) {
         for (const edge of edges) {
           edgesRef.current.push(edge);
           const cy = cyRef.current;
-          if (!cy) continue;
+          if (!cy) {
+            log(`WARN: cy not initialized, cannot add edge`);
+            continue;
+          }
 
           const edgeId = `${edge.from}-${edge.to}-${edge.tx_hash}`;
           if (cy.getElementById(edgeId).length) continue;
+
+          // Check that source and target nodes exist
+          if (!cy.getElementById(edge.from).length) {
+            log(`WARN: edge source ${edge.from.slice(0, 10)} not found, skipping edge`);
+            continue;
+          }
+          if (!cy.getElementById(edge.to).length) {
+            log(`WARN: edge target ${edge.to.slice(0, 10)} not found, skipping edge`);
+            continue;
+          }
 
           let thickness = 1;
           try {
@@ -276,8 +340,9 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
               txHash: edge.tx_hash,
             },
           });
-          setEdgeCount(edgesRef.current.length);
         }
+        setEdgeCount(edgesRef.current.length);
+        log(`+${edges.length} edges (total: ${edgesRef.current.length})`);
       },
 
       getGraph() {
@@ -290,14 +355,21 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       clear() {
         nodesRef.current.clear();
         edgesRef.current = [];
+        lastLayoutCountRef.current = 0;
         setNodeCount(0);
         setEdgeCount(0);
+        setDebugLog([]);
         cyRef.current?.elements().remove();
+        log('Graph cleared');
       },
     }));
 
     return (
-      <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden mt-4">
+      <div className={`bg-gray-800 border border-gray-700 rounded-lg overflow-hidden ${
+        fullscreen
+          ? 'fixed inset-0 z-50 m-0 rounded-none'
+          : 'mt-4'
+      }`}>
         {/* Toolbar */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 flex-wrap gap-2">
           <span className="text-xs text-gray-400">
@@ -358,6 +430,25 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
             >
               -
             </button>
+            <button
+              onClick={() => setVerbose(v => !v)}
+              className={`text-xs px-2 py-1 rounded ${verbose ? 'bg-yellow-700 text-white' : 'bg-gray-700 text-gray-300'} hover:bg-gray-600`}
+            >
+              Debug
+            </button>
+            <button
+              onClick={() => {
+                setFullscreen(f => !f);
+                // Re-fit after transition
+                setTimeout(() => {
+                  cyRef.current?.resize();
+                  cyRef.current?.fit(undefined, 40);
+                }, 50);
+              }}
+              className={`text-xs px-2 py-1 rounded ${fullscreen ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-300'} hover:bg-gray-600`}
+            >
+              {fullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            </button>
           </div>
         </div>
 
@@ -374,8 +465,29 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         <div
           ref={containerRef}
           className="w-full bg-gray-900"
-          style={{ height: '500px' }}
+          style={{ height: fullscreen ? 'calc(100vh - 90px)' : '500px' }}
         />
+
+        {/* Debug panel */}
+        {verbose && (
+          <div className="border-t border-gray-700 bg-gray-950 p-2 max-h-48 overflow-auto font-mono text-[10px] text-gray-500">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-gray-400 font-bold">Debug Log ({debugLog.length})</span>
+              <button
+                onClick={() => setDebugLog([])}
+                className="text-gray-600 hover:text-gray-400 text-[10px]"
+              >
+                Clear
+              </button>
+            </div>
+            {debugLog.length === 0 && <div className="text-gray-600">No events yet. Start a trace to see debug output.</div>}
+            {debugLog.map((entry, i) => (
+              <div key={i} className={entry.includes('WARN') ? 'text-yellow-500' : entry.includes('ERR') ? 'text-red-500' : ''}>
+                {entry}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   },

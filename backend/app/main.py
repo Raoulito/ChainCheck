@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -48,9 +49,21 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Initial label sync failed (non-fatal): %s", exc)
 
+    # Periodic label refresh (every 24h)
+    async def _label_refresh_loop():
+        while True:
+            await asyncio.sleep(86400)
+            try:
+                await run_label_sync()
+            except Exception as exc:
+                logger.warning("Periodic label sync failed: %s", exc)
+
+    refresh_task = asyncio.create_task(_label_refresh_loop())
+
     logger.info("ChainScope backend started")
     yield
     # Shutdown
+    refresh_task.cancel()
     await engine.dispose()
 
 

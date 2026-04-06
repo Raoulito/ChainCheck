@@ -1,4 +1,5 @@
 import abc
+import asyncio
 import logging
 from decimal import Decimal
 
@@ -41,14 +42,24 @@ class ChainProvider(abc.ABC):
         ...
 
     async def _rate_limited_request(
-        self, url: str, params: dict | None = None
+        self, url: str, params: dict | None = None, _retries: int = 3
     ) -> httpx.Response:
-        """Make an HTTP request gated by the global token bucket."""
-        limiter = LIMITERS.get(self.provider_name())
-        if limiter:
-            async with limiter:
+        """Make an HTTP request gated by the global token bucket, with 429 retry."""
+        for attempt in range(_retries):
+            limiter = LIMITERS.get(self.provider_name())
+            try:
+                if limiter:
+                    async with limiter:
+                        return await self._do_request(url, params)
                 return await self._do_request(url, params)
-        return await self._do_request(url, params)
+            except RateLimitError:
+                if attempt + 1 >= _retries:
+                    raise
+                wait = 2 ** attempt
+                logger.info("429 from %s, retrying in %ds (attempt %d/%d)",
+                            self.provider_name(), wait, attempt + 1, _retries)
+                await asyncio.sleep(wait)
+        raise ProviderError(self.provider_name(), "Max retries exceeded")
 
     async def _do_request(
         self, url: str, params: dict | None = None

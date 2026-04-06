@@ -1,25 +1,53 @@
 import logging
 from decimal import Decimal
 
-from app.models.schemas import NormalizedTx, ChangeDetection
+from app.models.schemas import NormalizedTx
 from app.providers.base import ChainProvider
 
 logger = logging.getLogger(__name__)
 
+# Primary: mempool.space (higher rate limits, same API format)
+MEMPOOL_BASE = "https://mempool.space/api"
+# Fallback: Blockstream
 BLOCKSTREAM_BASE = "https://blockstream.info/api"
+
 SATOSHI_DECIMALS = 8
 SATS_PER_BTC = Decimal("100000000")
 
 
 class BitcoinProvider(ChainProvider):
+    def __init__(self):
+        super().__init__()
+        self._api_base = MEMPOOL_BASE
+        self._using_fallback = False
+
     def chain_id(self) -> str:
         return "btc"
 
     def provider_name(self) -> str:
-        return "blockstream"
+        return "mempool" if not self._using_fallback else "blockstream"
+
+    def _switch_to_fallback(self) -> None:
+        if not self._using_fallback:
+            logger.warning("Mempool.space hit rate limit, switching to Blockstream fallback")
+            self._using_fallback = True
+            self._api_base = BLOCKSTREAM_BASE
+
+    async def _btc_request(self, path: str) -> "httpx.Response":
+        """Make a request, falling back to Blockstream on 429."""
+        from app.errors import RateLimitError
+        url = f"{self._api_base}{path}"
+        try:
+            return await self._rate_limited_request(url)
+        except RateLimitError:
+            if self._using_fallback:
+                raise
+            self._switch_to_fallback()
+            url = f"{self._api_base}{path}"
+            return await self._rate_limited_request(url)
 
     async def get_latest_block(self) -> int:
-        response = await self._rate_limited_request(f"{BLOCKSTREAM_BASE}/blocks/tip/height")
+        response = await self._btc_request("/blocks/tip/height")
         return int(response.text.strip())
 
     async def fetch_transactions(
@@ -44,16 +72,17 @@ class BitcoinProvider(ChainProvider):
         return page_txs, total
 
     async def _fetch_all_txs(self, address: str) -> list[dict]:
-        """Fetch all transactions using Blockstream's last_seen_txid pagination."""
+        """Fetch all transactions using chain pagination (same for mempool.space and Blockstream)."""
         all_txs: list[dict] = []
         last_seen_txid: str | None = None
+        max_pages = 10  # Safety cap
 
-        while True:
-            url = f"{BLOCKSTREAM_BASE}/address/{address}/txs"
+        for _ in range(max_pages):
+            path = f"/address/{address}/txs"
             if last_seen_txid:
-                url = f"{url}/chain/{last_seen_txid}"
+                path = f"/address/{address}/txs/chain/{last_seen_txid}"
 
-            response = await self._rate_limited_request(url)
+            response = await self._btc_request(path)
             batch: list[dict] = response.json()
 
             if not batch:

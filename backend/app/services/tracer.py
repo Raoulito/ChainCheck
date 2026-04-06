@@ -4,7 +4,7 @@ import logging
 import time
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import config
@@ -39,16 +39,32 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
     edges: list[dict] = []
     pruned: list[dict] = []
 
+    # BTC addresses are case-sensitive; EVM are not
+    def _norm(addr: str) -> str:
+        return addr if job.chain == "btc" else addr.lower()
+
+    # Track flagged ancestors so we can propagate context to children
+    # Maps address -> (flag_type, flag_name, flag_address)
+    flagged_context: dict[str, tuple[str, str, str]] = {}
+
     # BFS queue: (address, hop_level)
-    queue: list[tuple[str, int]] = [(job.address.lower(), 0)]
-    visited.add(job.address.lower())
+    root_addr = _norm(job.address)
+    queue: list[tuple[str, int]] = [(root_addr, 0)]
+    visited.add(root_addr)
 
     # Add root node
-    root_label = await _get_label(job.address.lower(), session)
+    root_label_info = await _get_label_full(root_addr, session)
+    root_label_text = root_label_info["entity_name"] if root_label_info else None
+    if root_label_info and root_label_info["entity_type"] in ("sanctioned", "mixer", "darknet"):
+        flag_type = root_label_info["entity_type"]
+        flag_name = root_label_info["entity_name"]
+        flagged_context[root_addr] = (flag_type, flag_name, root_addr)
+        root_label_text = f"{flag_name} ({flag_type})"
+
     root_node = {
-        "address": job.address.lower(),
-        "label": root_label,
-        "risk": None,
+        "address": root_addr,
+        "label": root_label_text,
+        "risk": _risk_from_type(root_label_info["entity_type"]) if root_label_info else None,
         "hop": 0,
     }
     nodes.append(root_node)
@@ -65,18 +81,16 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                 continue
 
             # Budget check
-            hop_budget = int(total_api_budget * HOP_BUDGET.get(hop + 1, 0.25))
             if api_calls_used >= total_api_budget:
                 await _emit(job, "warning", {"message": "API budget exhausted"})
                 break
 
             # Check if address should be pruned (known exchange, etc.)
-            label_name = await _get_label(address, session)
-            if label_name and hop > 0:
-                entity_type = await _get_entity_type(address, session)
-                if entity_type in ("exchange", "mixer"):
-                    pruned.append({"address": address, "reason": entity_type, "hop": hop})
-                    await _emit(job, "pruned", {"address": address, "reason": entity_type, "hop": hop})
+            addr_label = await _get_label_full(address, session)
+            if addr_label and hop > 0:
+                if addr_label["entity_type"] in ("exchange", "mixer"):
+                    pruned.append({"address": address, "reason": addr_label["entity_type"], "hop": hop})
+                    await _emit(job, "pruned", {"address": address, "reason": addr_label["entity_type"], "hop": hop})
                     continue
 
             # Fetch transactions
@@ -104,20 +118,20 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                 # Determine counterparty based on direction
                 counterparty: str | None = None
                 if job.direction == "forward":
-                    if tx.from_address and tx.from_address.lower() == address:
-                        counterparty = (tx.to_address or "").lower()
+                    if tx.from_address and _norm(tx.from_address) == address:
+                        counterparty = _norm(tx.to_address or "")
                     elif job.chain == "btc" and tx.outputs:
                         for out in tx.outputs:
-                            out_addr = out.get("address", "").lower()
+                            out_addr = _norm(out.get("address", ""))
                             if out_addr and out_addr != address:
                                 counterparty = out_addr
                                 break
                 else:  # backward
-                    if tx.to_address and tx.to_address.lower() == address:
-                        counterparty = (tx.from_address or "").lower()
+                    if tx.to_address and _norm(tx.to_address) == address:
+                        counterparty = _norm(tx.from_address or "")
                     elif job.chain == "btc" and tx.inputs:
                         for inp in tx.inputs:
-                            inp_addr = inp.get("address", "").lower()
+                            inp_addr = _norm(inp.get("address", ""))
                             if inp_addr and inp_addr != address:
                                 counterparty = inp_addr
                                 break
@@ -145,11 +159,36 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                 # Discover new node
                 if counterparty not in visited:
                     visited.add(counterparty)
-                    cp_label = await _get_label(counterparty, session)
+                    cp_label_info = await _get_label_full(counterparty, session)
+                    cp_label_text = cp_label_info["entity_name"] if cp_label_info else None
+                    cp_risk: str | None = None
+
+                    # Check if counterparty itself is flagged
+                    if cp_label_info and cp_label_info["entity_type"] in ("sanctioned", "mixer", "darknet"):
+                        flag_type = cp_label_info["entity_type"]
+                        flag_name = cp_label_info["entity_name"]
+                        flagged_context[counterparty] = (flag_type, flag_name, counterparty)
+                        cp_label_text = f"{flag_name} ({flag_type})"
+                        cp_risk = _risk_from_type(flag_type)
+                    elif cp_label_info:
+                        cp_label_text = f"{cp_label_info['entity_name']} ({cp_label_info['entity_type']})"
+                        cp_risk = _risk_from_type(cp_label_info["entity_type"])
+
+                    # Propagate flagged ancestor context
+                    if counterparty not in flagged_context and address in flagged_context:
+                        flag_type, flag_name, flag_addr = flagged_context[address]
+                        flagged_context[counterparty] = (flag_type, flag_name, flag_addr)
+                        hops_away = hop + 1
+                        relationship = "direct" if hops_away == 1 else f"{hops_away}-hop indirect"
+                        context_label = f"{relationship} link to {flag_name} ({flag_type})"
+                        cp_label_text = f"{cp_label_text} | {context_label}" if cp_label_text else context_label
+                        if not cp_risk:
+                            cp_risk = "HIGH" if hops_away == 1 else "MEDIUM"
+
                     new_node = {
                         "address": counterparty,
-                        "label": cp_label,
-                        "risk": None,
+                        "label": cp_label_text,
+                        "risk": cp_risk,
                         "hop": hop + 1,
                     }
                     nodes.append(new_node)
@@ -221,16 +260,28 @@ async def _emit(job: TraceJob, event_type: str, data: dict | list) -> None:
         logger.warning("Event queue full for job %s, dropping event", job.job_id)
 
 
-async def _get_label(address: str, session: AsyncSession) -> str | None:
+async def _get_label_full(address: str, session: AsyncSession) -> dict | None:
+    """Lookup label by address, case-insensitive (needed for BTC)."""
     result = await session.execute(
-        select(Label.entity_name).where(Label.address == address)
+        select(Label).where(func.lower(Label.address) == address.lower())
     )
-    row = result.scalar_one_or_none()
-    return row
+    label = result.scalar_one_or_none()
+    if not label:
+        return None
+    return {
+        "entity_name": label.entity_name,
+        "entity_type": label.entity_type,
+        "source": label.source,
+    }
 
 
-async def _get_entity_type(address: str, session: AsyncSession) -> str | None:
-    result = await session.execute(
-        select(Label.entity_type).where(Label.address == address)
-    )
-    return result.scalar_one_or_none()
+def _risk_from_type(entity_type: str) -> str | None:
+    """Map entity type to risk level."""
+    return {
+        "sanctioned": "SEVERE",
+        "mixer": "HIGH",
+        "darknet": "HIGH",
+        "gambling": "MEDIUM",
+        "exchange": "LOW",
+        "defi": "LOW",
+    }.get(entity_type)

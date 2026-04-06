@@ -9,8 +9,8 @@ class EthereumProvider(EvmBaseProvider):
     def provider_name(self) -> str:
         return "etherscan"
 
-    def _api_base(self) -> str:
-        return "https://api.etherscan.io/api"
+    def _chain_id_num(self) -> int:
+        return 1  # Ethereum Mainnet
 
     def _api_key(self) -> str:
         return config.etherscan_api_key
