@@ -183,7 +183,9 @@ async def import_opensanctions(session: AsyncSession) -> int:
 
                     # Collect crypto wallets
                     if schema == "CryptoWallet":
-                        for addr in props.get("address", []):
+                        # OpenSanctions uses "publicKey" (not "address")
+                        addrs = props.get("publicKey", []) or props.get("address", [])
+                        for addr in addrs:
                             currencies = props.get("currency", ["unknown"])
                             holders = props.get("holder", [])
                             wallets.append({

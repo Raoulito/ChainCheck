@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
@@ -73,7 +73,7 @@ async def get_label(
     session: AsyncSession = Depends(get_session),
 ) -> LabelInfo | None:
     result = await session.execute(
-        select(Label).where(Label.address == address.lower())
+        select(Label).where(func.lower(Label.address) == address.lower())
     )
     label = result.scalar_one_or_none()
     if not label:
@@ -172,8 +172,12 @@ async def create_label(
 ) -> LabelInfo:
     now = datetime.now(timezone.utc).isoformat()
 
+    # Preserve original case for BTC, lowercase for EVM
+    is_btc = body.chain == "btc"
+    norm_addr = body.address if is_btc else body.address.lower()
+
     existing = await session.execute(
-        select(Label).where(Label.address == body.address.lower())
+        select(Label).where(func.lower(Label.address) == body.address.lower())
     )
     existing_label = existing.scalar_one_or_none()
 
@@ -185,7 +189,7 @@ async def create_label(
         existing_label.updated_at = now
     else:
         label = Label(
-            address=body.address.lower(),
+            address=norm_addr,
             chain=body.chain,
             entity_name=body.entity_name,
             entity_type=body.entity_type,
