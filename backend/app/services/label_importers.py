@@ -36,11 +36,19 @@ async def _batch_insert_labels(
     if not labels:
         return 0
 
+    # Deduplicate input — first occurrence wins
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for l in labels:
+        if l["address"] not in seen:
+            seen.add(l["address"])
+            deduped.append(l)
+
     now = datetime.now(timezone.utc).isoformat()
     count = 0
 
-    for i in range(0, len(labels), batch_size):
-        batch = labels[i : i + batch_size]
+    for i in range(0, len(deduped), batch_size):
+        batch = deduped[i : i + batch_size]
         addresses = [l["address"] for l in batch]
 
         existing_result = await session.execute(
@@ -331,7 +339,7 @@ _BTC_CURATED_LABELS = [
     ("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh", "Coinbase", "exchange"),
     # Bitfinex
     ("bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97", "Bitfinex Cold Wallet", "exchange"),
-    ("3JZq4atUahhuA9rLhXLMhhTo133J9rF97j", "Bitfinex", "exchange"),
+    ("3D2oetdNuZUqQHPJmcMDDHYoqkyNVsFk9r", "Bitfinex", "exchange"),
     ("1KYiKJEfdJtap9QX2v9BXJMpz2SfU4pgZw", "Bitfinex", "exchange"),
     # Kraken
     ("bc1qa5wkgaew2dkv56kc6hp23lb7p4n5kg27a6g0a3", "Kraken", "exchange"),
@@ -354,7 +362,6 @@ _BTC_CURATED_LABELS = [
     ("1EiQ5JtgEiRkhVbMbfpmxAisVG7re3EdXm", "Mt. Gox Trustee", "exchange"),
     # Silk Road / seized
     ("1F1tAaz5x1HUXrCNLbtMDqcw6o5GNn4xqX", "FBI Silk Road Seizure", "law_enforcement"),
-    ("bc1qa5wkgaew2dkv56kc6hp23lb7p4n5kg27a6g0a3", "Kraken", "exchange"),
     # Mining pools
     ("3NA8hsjfdgVkmmVS9moHmkZsVCoLxUkvvv", "SlushPool", "mining_pool"),
     ("1KFHE7w8BhaENAswwryaoccDb6qcT6DbYY", "F2Pool", "mining_pool"),
@@ -487,7 +494,7 @@ _ETH_KNOWN_LABELS = [
     ("0xddfabcdc4d8ffc6d5beaf154f18b778f892a0740", "Coinbase", "exchange"),
     ("0x3cd751e6b0078be393132286c442345e5dc49699", "Coinbase", "exchange"),
     ("0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511", "Coinbase", "exchange"),
-    ("0xeb2629a2734e272bcc07bda959863f316f4bd4cf", "Coinbase Commerce", "exchange"),
+    ("0x881d40237659c251811cec9c364ef91dc08d300c", "Coinbase Commerce", "exchange"),
     ("0x0d0707963952f2fba59dd06f2b425ace40b492fe", "Gate.io", "exchange"),
     ("0x1c4b70a3968436b9a0a9cf5205c787eb81bb558c", "Gate.io", "exchange"),
     ("0x0093e5f2a850268c0ca3093c7ea53731296487eb", "Gate.io", "exchange"),
