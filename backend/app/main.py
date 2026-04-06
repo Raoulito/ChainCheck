@@ -42,14 +42,9 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Seed labels on first startup
+    # Periodic label refresh (every 7 days) — no sync on startup
     from app.jobs.label_sync import run_label_sync
-    try:
-        await run_label_sync()
-    except Exception as exc:
-        logger.warning("Initial label sync failed (non-fatal): %s", exc)
 
-    # Periodic label refresh (every 7 days)
     async def _label_refresh_loop():
         while True:
             await asyncio.sleep(604800)

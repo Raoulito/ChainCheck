@@ -20,7 +20,7 @@ import { AnalysisPanel } from './components/AnalysisPanel';
 import { CaseManager } from './components/CaseManager';
 import { AddLabelForm } from './components/AddLabelForm';
 import { LabelManager } from './components/LabelManager';
-import { useLookup, useRiskScore, useExposure } from './api/hooks';
+import { useLookup, useAddressLabel, useRiskScore, useExposure } from './api/hooks';
 import { useTraceStream } from './hooks/useTraceStream';
 import { useTraceSession } from './stores/traceSessionStore';
 import { exportTraceCsv } from './utils/exportCsv';
@@ -47,6 +47,7 @@ function Explorer() {
   const [traceMinAmount, setTraceMinAmount] = useState('0');
   const [traceTokenFilter, setTraceTokenFilter] = useState('');
 
+  const { data: labelData } = useAddressLabel(address);
   const { data, isLoading, error, refetch } = useLookup(chain, address, page);
   const { data: riskData } = useRiskScore(address, chain);
   const { data: exposureData } = useExposure(address, chain);
@@ -87,9 +88,45 @@ function Explorer() {
           </>
         )}
 
-        {/* Loading skeleton */}
-        {isLoading && (
-          <div className="mt-8 space-y-4">
+        {/* Instant local data — shows immediately while lookup loads */}
+        {address && chain && (
+          <div className="mt-8">
+            {/* Address header */}
+            <div className="mb-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                <p className="text-gray-400 text-sm">
+                  <span className="uppercase font-medium text-gray-300">{chain}</span>
+                  {' '}&middot;{' '}
+                  <span className="font-mono text-xs">{address}</span>
+                </p>
+                <AddLabelForm address={address} chain={chain} />
+              </div>
+            </div>
+
+            {/* Local label (instant) */}
+            {labelData && (
+              <div className="mb-3 inline-flex items-center gap-2 px-3 py-1.5 rounded bg-blue-900/30 border border-blue-700/50">
+                <span className="text-xs text-blue-300 font-medium">{labelData.entity_name}</span>
+                <span className="text-xs text-blue-500">({labelData.entity_type})</span>
+                <span className="text-[10px] text-gray-500">{labelData.source}</span>
+              </div>
+            )}
+
+            {/* Risk badge (fast local query) */}
+            {riskData && (
+              <div className="mb-4">
+                <RiskBadge risk={riskData} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Loading skeleton — only for the transaction/stats section */}
+        {isLoading && address && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span className="animate-pulse">Fetching on-chain data...</span>
+            </div>
             <div className="grid grid-cols-4 gap-4">
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="bg-gray-800 rounded-lg p-4 h-20 animate-pulse" />
@@ -120,27 +157,9 @@ function Explorer() {
           </div>
         )}
 
-        {/* Results */}
+        {/* Full results — loads when on-chain data arrives */}
         {data && !isLoading && (
-          <div className="mt-8">
-            {/* Address header */}
-            <div className="mb-4">
-              <div className="flex items-center gap-3 flex-wrap">
-                <p className="text-gray-400 text-sm">
-                  <span className="uppercase font-medium text-gray-300">{data.chain}</span>
-                  {' '}&middot;{' '}
-                  <span className="font-mono text-xs">{data.address}</span>
-                </p>
-                <AddLabelForm address={data.address} chain={data.chain} />
-              </div>
-            </div>
-
-            {/* Risk + Stats */}
-            {riskData && (
-              <div className="mb-4">
-                <RiskBadge risk={riskData} />
-              </div>
-            )}
+          <div>
             <StatsHeader stats={data.stats} chain={data.chain} />
             {exposureData && (
               <div className="mb-4">
