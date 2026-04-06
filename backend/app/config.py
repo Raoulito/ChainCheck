@@ -47,6 +47,8 @@ class Settings(BaseSettings):
         return {
             "eth": self.eth_finality_blocks,
             "btc": self.btc_finality_blocks,
+            "bsc": 15,
+            "polygon": 128,
         }
 
     @property
@@ -54,6 +56,8 @@ class Settings(BaseSettings):
         return {
             "eth": Decimal(self.dust_floor_eth_wei),
             "btc": Decimal(self.dust_floor_btc_sat),
+            "bsc": Decimal(self.dust_floor_eth_wei),
+            "polygon": Decimal(self.dust_floor_eth_wei),
         }
 
     @property

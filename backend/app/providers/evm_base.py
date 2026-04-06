@@ -46,7 +46,8 @@ class EvmBaseProvider(ChainProvider):
 
         if data.get("status") == "0":
             msg = data.get("result", data.get("message", "unknown error"))
-            raise ValueError(f"Etherscan API error: {msg}")
+            from app.errors import ProviderError
+            raise ProviderError(self.provider_name(), msg)
 
         result = data.get("result", "0x0")
         if isinstance(result, str) and result.startswith("0x"):
