@@ -5,10 +5,16 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import config
 from app.models.label import Label
 from app.models.schemas import NormalizedTx, RiskReason, RiskScore
 
 logger = logging.getLogger(__name__)
+
+_AUTHORITATIVE_SOURCES = frozenset({
+    "ofac_sdn", "opensanctions", "etherscan_known", "walletexplorer",
+    "chainalysis_oracle", "chainabuse", "arkham",
+})
 
 # Rule definitions: (rule_name, entity_types_to_check, severity, weight)
 RISK_RULES = [
@@ -35,6 +41,10 @@ class RiskScorer:
 
         # Check if address itself is labeled
         own_label = await self._get_label(address)
+
+        # If no label, try on-demand enrichment (Chainalysis oracle, Arkham)
+        if not own_label:
+            own_label = await self._enrich_address(address, chain)
 
         if own_label and own_label.entity_type == "sanctioned":
             reasons.append(RiskReason(
@@ -162,6 +172,29 @@ class RiskScorer:
         )
         return {label.address: label for label in result.scalars()}
 
+    async def _enrich_address(self, address: str, chain: str) -> Label | None:
+        """Try on-demand enrichment sources for an unlabeled address."""
+        from app.services.label_enrichers import check_chainalysis_oracle, lookup_arkham
+
+        # Chainalysis oracle (ETH only)
+        if chain in ("eth", "bsc", "polygon") and address.startswith("0x"):
+            try:
+                if await check_chainalysis_oracle(address, self._session):
+                    return await self._get_label(address)
+            except Exception:
+                pass
+
+        # Arkham Intelligence
+        if config.arkham_api_key:
+            try:
+                result = await lookup_arkham(address, chain, config.arkham_api_key, self._session)
+                if result:
+                    return await self._get_label(address)
+            except Exception:
+                pass
+
+        return None
+
     async def _persist_runtime_label(
         self,
         address: str,
@@ -174,7 +207,7 @@ class RiskScorer:
         existing = await self._get_label(address)
         if existing:
             # Never overwrite authoritative or legitimate labels
-            if existing.source in ("ofac_sdn", "etherscan_known", "walletexplorer"):
+            if existing.source in _AUTHORITATIVE_SOURCES:
                 return
             if existing.entity_type in ("exchange", "defi", "historical"):
                 return

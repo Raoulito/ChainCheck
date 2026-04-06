@@ -49,10 +49,10 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Initial label sync failed (non-fatal): %s", exc)
 
-    # Periodic label refresh (every 24h)
+    # Periodic label refresh (every 7 days)
     async def _label_refresh_loop():
         while True:
-            await asyncio.sleep(86400)
+            await asyncio.sleep(604800)
             try:
                 await run_label_sync()
             except Exception as exc:

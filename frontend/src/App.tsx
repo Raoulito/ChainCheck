@@ -18,6 +18,8 @@ import { FlowTree } from './components/FlowTree';
 import { TraceFilterControls } from './components/TraceFilterControls';
 import { AnalysisPanel } from './components/AnalysisPanel';
 import { CaseManager } from './components/CaseManager';
+import { AddLabelForm } from './components/AddLabelForm';
+import { LabelManager } from './components/LabelManager';
 import { useLookup, useRiskScore, useExposure } from './api/hooks';
 import { useTraceStream } from './hooks/useTraceStream';
 import { useTraceSession } from './stores/traceSessionStore';
@@ -80,6 +82,7 @@ function Explorer() {
         {!data && !isLoading && (
           <>
             <ExampleLookups onSelect={handleSubmit} />
+            <LabelManager />
             <CaseManager onOpenInvestigation={(_id, addr, ch) => handleSubmit(ch, addr)} />
           </>
         )}
@@ -122,11 +125,14 @@ function Explorer() {
           <div className="mt-8">
             {/* Address header */}
             <div className="mb-4">
-              <p className="text-gray-400 text-sm">
-                <span className="uppercase font-medium text-gray-300">{data.chain}</span>
-                {' '}&middot;{' '}
-                <span className="font-mono text-xs">{data.address}</span>
-              </p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <p className="text-gray-400 text-sm">
+                  <span className="uppercase font-medium text-gray-300">{data.chain}</span>
+                  {' '}&middot;{' '}
+                  <span className="font-mono text-xs">{data.address}</span>
+                </p>
+                <AddLabelForm address={data.address} chain={data.chain} />
+              </div>
             </div>
 
             {/* Risk + Stats */}
@@ -155,7 +161,7 @@ function Explorer() {
               onCancel={cancelTracing}
             />
             <TraceProgress progress={progress} status={traceStatus} metadata={metadata} />
-            <GraphView ref={graphRef} onAddressClick={(addr) => handleAddressClick(data.chain, addr)} />
+            <GraphView ref={graphRef} chain={data.chain} onAddressClick={(addr) => handleAddressClick(data.chain, addr)} />
 
             {/* Flow tree + filters (visible after trace starts) */}
             {traceStatus !== 'idle' && (

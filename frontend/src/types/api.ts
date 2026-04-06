@@ -72,6 +72,12 @@ export interface LabelInfo {
   confidence: string;
 }
 
+export interface BatchCreateLabelResponse {
+  created: number;
+  updated: number;
+  total: number;
+}
+
 export interface RiskReason {
   rule: string;
   detail: string;

@@ -1,4 +1,4 @@
-import type { LookupResponse, PriceEnrichRequest, PriceEnrichResponse, LabelInfo, RiskScore } from '../types/api';
+import type { LookupResponse, PriceEnrichRequest, PriceEnrichResponse, LabelInfo, BatchCreateLabelResponse, RiskScore } from '../types/api';
 import { API_BASE } from './config';
 
 export async function lookupAddress(
@@ -49,6 +49,64 @@ export async function searchLabels(
   return res.json();
 }
 
+export async function createLabel(
+  address: string,
+  chain: string,
+  entityName: string,
+  entityType: string,
+  confidence: string = 'medium',
+): Promise<LabelInfo> {
+  const res = await fetch(`${API_BASE}/api/labels`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      address,
+      chain,
+      entity_name: entityName,
+      entity_type: entityType,
+      source: 'manual',
+      confidence,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Create label failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function batchCreateLabels(
+  addresses: string[],
+  chain: string,
+  entityName: string,
+  entityType: string,
+  confidence: string = 'medium',
+): Promise<BatchCreateLabelResponse> {
+  const res = await fetch(`${API_BASE}/api/labels/batch/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      addresses,
+      chain,
+      entity_name: entityName,
+      entity_type: entityType,
+      source: 'manual',
+      confidence,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Batch create failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function getLabel(address: string): Promise<LabelInfo | null> {
+  const res = await fetch(`${API_BASE}/api/labels/${address}`);
+  if (!res.ok) throw new Error(`Get label failed: ${res.status}`);
+  return res.json();
+}
+
 export async function getRiskScore(
   address: string,
   chain: string = 'eth'
@@ -72,5 +130,34 @@ export async function getCluster(
 ): Promise<Record<string, unknown>> {
   const res = await fetch(`${API_BASE}/api/cluster/${address}`);
   if (!res.ok) throw new Error(`Cluster failed: ${res.status}`);
+  return res.json();
+}
+
+export function createSyncStream(): EventSource {
+  return new EventSource(`${API_BASE}/api/labels/sync/stream`);
+}
+
+export interface SyncSourceLog {
+  last_synced_at: string;
+  labels_added: number;
+  total_labels: number;
+}
+
+export async function getSyncStatus(): Promise<{ sources: Record<string, SyncSourceLog> }> {
+  const res = await fetch(`${API_BASE}/api/labels/sync/status`);
+  if (!res.ok) throw new Error(`Sync status failed: ${res.status}`);
+  return res.json();
+}
+
+export interface LabelStatusResponse {
+  total_labels: number;
+  by_source: Record<string, number>;
+  by_type: Record<string, number>;
+  by_chain: Record<string, number>;
+}
+
+export async function getLabelStatus(): Promise<LabelStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/labels/status`);
+  if (!res.ok) throw new Error(`Label status failed: ${res.status}`);
   return res.json();
 }

@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     helius_api_key: str = ""
     coingecko_api_key: str = ""
 
+    # Label enrichment (optional — leave empty to skip)
+    chainabuse_api_key: str = ""
+    arkham_api_key: str = ""
+
     # Database
     database_url: str = "sqlite+aiosqlite:///./chainscope.db"
 

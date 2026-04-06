@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useRef, useEffect, useState, useCallba
 import cytoscape from 'cytoscape';
 import cytoscapeDagre from 'cytoscape-dagre';
 import { useGraphLayout } from '../hooks/useGraphLayout';
+import { createLabel, getLabel } from '../api/client';
 
 // Register dagre layout extension
 cytoscape.use(cytoscapeDagre);
@@ -38,12 +39,24 @@ const RISK_COLORS: Record<string, string> = {
 
 type LayoutType = 'dagre' | 'circular';
 
+const ENTITY_TYPES = [
+  'exchange', 'defi', 'mixer', 'sanctioned', 'darknet',
+  'gambling', 'scam', 'service', 'mining_pool', 'other',
+];
+
+interface ContextMenu {
+  x: number;
+  y: number;
+  address: string;
+}
+
 interface GraphViewProps {
   onAddressClick?: (address: string) => void;
+  chain?: string;
 }
 
 export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
-  function GraphView({ onAddressClick }, ref) {
+  function GraphView({ onAddressClick, chain }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const cyRef = useRef<cytoscape.Core | null>(null);
     const nodesRef = useRef<Map<string, GraphNode>>(new Map());
@@ -56,6 +69,13 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
     const [verbose, setVerbose] = useState(false);
     const [fullscreen, setFullscreen] = useState(false);
     const [debugLog, setDebugLog] = useState<string[]>([]);
+    const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
+    const [ctxEntityName, setCtxEntityName] = useState('');
+    const [ctxEntityType, setCtxEntityType] = useState('exchange');
+    const [ctxConfidence, setCtxConfidence] = useState('medium');
+    const [ctxSaving, setCtxSaving] = useState(false);
+    const [ctxStatus, setCtxStatus] = useState<string | null>(null);
+    const [ctxExisting, setCtxExisting] = useState<string | null>(null);
     const { positions, isComputing, computeLayout } = useGraphLayout();
 
     // Keep callback ref in sync without re-running the effect
@@ -63,14 +83,37 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       onAddressClickRef.current = onAddressClick;
     }, [onAddressClick]);
 
-    // Escape key exits fullscreen
+    // Escape key exits fullscreen / closes context menu
     useEffect(() => {
       const handler = (e: KeyboardEvent) => {
-        if (e.key === 'Escape' && fullscreen) setFullscreen(false);
+        if (e.key === 'Escape') {
+          if (ctxMenu) setCtxMenu(null);
+          else if (fullscreen) setFullscreen(false);
+        }
       };
       window.addEventListener('keydown', handler);
       return () => window.removeEventListener('keydown', handler);
-    }, [fullscreen]);
+    }, [fullscreen, ctxMenu]);
+
+    // Prevent browser context menu on graph container
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const handler = (e: MouseEvent) => e.preventDefault();
+      el.addEventListener('contextmenu', handler);
+      return () => el.removeEventListener('contextmenu', handler);
+    }, []);
+
+    // Close context menu on outside click
+    useEffect(() => {
+      if (!ctxMenu) return;
+      const handler = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (!target.closest('.ctx-label-menu')) setCtxMenu(null);
+      };
+      window.addEventListener('mousedown', handler);
+      return () => window.removeEventListener('mousedown', handler);
+    }, [ctxMenu]);
 
     const log = useCallback((msg: string) => {
       setDebugLog(prev => {
@@ -185,6 +228,40 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         containerRef.current!.title = '';
       });
 
+      // Right-click context menu on nodes
+      cy.on('cxttap', 'node', (evt) => {
+        const node = evt.target;
+        const addr = node.data('id');
+        const pos = evt.renderedPosition || evt.position;
+        const rect = containerRef.current!.getBoundingClientRect();
+        setCtxMenu({
+          x: rect.left + pos.x,
+          y: rect.top + pos.y,
+          address: addr,
+        });
+        setCtxEntityName('');
+        setCtxEntityType('exchange');
+        setCtxConfidence('medium');
+        setCtxStatus(null);
+        setCtxExisting(null);
+        // Fetch existing label
+        getLabel(addr)
+          .then((label) => {
+            if (label) {
+              setCtxExisting(`${label.entity_name} (${label.entity_type}) [${label.source}]`);
+              setCtxEntityName(label.entity_name);
+              setCtxEntityType(label.entity_type);
+              setCtxConfidence(label.confidence);
+            }
+          })
+          .catch(() => {});
+      });
+
+      // Close context menu on background click/tap
+      cy.on('tap', (evt) => {
+        if (evt.target === cy) setCtxMenu(null);
+      });
+
       cyRef.current = cy;
 
       return () => {
@@ -256,6 +333,35 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       setLayoutType(type);
       runLayout(type);
     }, [runLayout]);
+
+    const handleCtxSave = useCallback(async () => {
+      if (!ctxMenu || !ctxEntityName.trim()) return;
+      setCtxSaving(true);
+      setCtxStatus(null);
+      try {
+        const label = await createLabel(
+          ctxMenu.address, chain || 'eth', ctxEntityName.trim(), ctxEntityType, ctxConfidence,
+        );
+        // Update the node label in the graph
+        const cy = cyRef.current;
+        if (cy) {
+          const node = cy.getElementById(ctxMenu.address);
+          if (node.length) {
+            node.data('displayLabel', label.entity_name);
+            node.data('labelText', label.entity_name);
+          }
+        }
+        // Update internal node ref
+        const nodeData = nodesRef.current.get(ctxMenu.address);
+        if (nodeData) nodeData.label = label.entity_name;
+        setCtxStatus('Saved');
+        setTimeout(() => setCtxMenu(null), 600);
+      } catch (err) {
+        setCtxStatus(err instanceof Error ? err.message : 'Failed');
+      } finally {
+        setCtxSaving(false);
+      }
+    }, [ctxMenu, ctxEntityName, ctxEntityType, ctxConfidence, chain]);
 
     useImperativeHandle(ref, () => ({
       addNode(node: GraphNode) {
@@ -486,6 +592,77 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
                 {entry}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Right-click label context menu */}
+        {ctxMenu && (
+          <div
+            className="ctx-label-menu fixed z-[100] bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 w-72"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-white">
+                {ctxExisting ? 'Edit Label' : 'Add Label'}
+              </span>
+              <button
+                onClick={() => setCtxMenu(null)}
+                className="text-gray-400 hover:text-white text-xs"
+              >
+                X
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-500 font-mono mb-2 truncate">
+              {ctxMenu.address}
+            </p>
+            {ctxExisting && (
+              <p className="text-[10px] text-blue-400 mb-2">
+                Current: {ctxExisting}
+              </p>
+            )}
+            <input
+              type="text"
+              placeholder="Entity name"
+              value={ctxEntityName}
+              onChange={(e) => setCtxEntityName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCtxSave(); }}
+              autoFocus
+              className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white mb-2 focus:outline-none focus:border-blue-500"
+            />
+            <div className="flex gap-2 mb-2">
+              <select
+                value={ctxEntityType}
+                onChange={(e) => setCtxEntityType(e.target.value)}
+                className="flex-1 bg-gray-900 border border-gray-600 rounded px-1 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+              >
+                {ENTITY_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              <select
+                value={ctxConfidence}
+                onChange={(e) => setCtxConfidence(e.target.value)}
+                className="bg-gray-900 border border-gray-600 rounded px-1 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCtxSave}
+                disabled={ctxSaving || !ctxEntityName.trim()}
+                className="text-xs px-3 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50"
+              >
+                {ctxSaving ? '...' : 'Save'}
+              </button>
+              {ctxStatus && (
+                <span className={`text-xs ${ctxStatus === 'Saved' ? 'text-green-400' : 'text-red-400'}`}>
+                  {ctxStatus}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
