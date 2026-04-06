@@ -126,6 +126,14 @@ class RiskScorer:
                 ))
                 break
 
+        # Persist runtime labels for the looked-up address if it interacts with flagged entities
+        flagged_types = {"sanctioned", "mixer", "darknet"}
+        for addr, label in counterparty_labels.items():
+            if label.entity_type in flagged_types:
+                await self._persist_runtime_label(
+                    address, chain, label.entity_name, label.entity_type, addr,
+                )
+
         # Aggregate: highest severity wins
         if not reasons:
             score = "LOW"
@@ -153,3 +161,39 @@ class RiskScorer:
             select(Label).where(Label.address.in_(addresses))
         )
         return {label.address: label for label in result.scalars()}
+
+    async def _persist_runtime_label(
+        self,
+        address: str,
+        chain: str,
+        flag_name: str,
+        flag_type: str,
+        flag_addr: str,
+    ) -> None:
+        """Label an address that directly interacts with a flagged entity."""
+        existing = await self._get_label(address)
+        if existing:
+            # Never overwrite authoritative or legitimate labels
+            if existing.source in ("ofac_sdn", "etherscan_known", "walletexplorer"):
+                return
+            if existing.entity_type in ("exchange", "defi", "historical"):
+                return
+            if existing.source == "runtime_trace":
+                return
+
+        now = datetime.now(timezone.utc).isoformat()
+        label = Label(
+            address=address.lower(),
+            chain=chain,
+            entity_name=f"direct link to {flag_name}",
+            entity_type="flagged_counterparty",
+            source="runtime_trace",
+            confidence="high",
+            updated_at=now,
+        )
+        try:
+            await self._session.merge(label)
+            await self._session.commit()
+        except Exception as exc:
+            logger.debug("Runtime label write failed for %s: %s", address[:12], exc)
+            await self._session.rollback()

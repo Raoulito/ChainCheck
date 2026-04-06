@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select, func
@@ -174,7 +175,7 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                         cp_label_text = f"{cp_label_info['entity_name']} ({cp_label_info['entity_type']})"
                         cp_risk = _risk_from_type(cp_label_info["entity_type"])
 
-                    # Propagate flagged ancestor context
+                    # Propagate flagged ancestor context and persist label
                     if counterparty not in flagged_context and address in flagged_context:
                         flag_type, flag_name, flag_addr = flagged_context[address]
                         flagged_context[counterparty] = (flag_type, flag_name, flag_addr)
@@ -184,6 +185,14 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                         cp_label_text = f"{cp_label_text} | {context_label}" if cp_label_text else context_label
                         if not cp_risk:
                             cp_risk = "HIGH" if hops_away == 1 else "MEDIUM"
+
+                        # Persist to DB so future lookups benefit
+                        if not (cp_label_info and cp_label_info["entity_type"] in _SKIP_ENTITY_TYPES):
+                            await _persist_runtime_label(
+                                counterparty, job.chain,
+                                flag_name, flag_type, flag_addr,
+                                hops_away, session,
+                            )
 
                     new_node = {
                         "address": counterparty,
@@ -284,4 +293,59 @@ def _risk_from_type(entity_type: str) -> str | None:
         "gambling": "MEDIUM",
         "exchange": "LOW",
         "defi": "LOW",
+        "flagged_counterparty": "HIGH",
     }.get(entity_type)
+
+
+# Authoritative sources that runtime labels must never overwrite
+_AUTHORITATIVE_SOURCES = {"ofac_sdn", "etherscan_known", "walletexplorer"}
+
+# Entity types that are legitimate services — never flag their counterparties
+_SKIP_ENTITY_TYPES = {"exchange", "defi", "historical"}
+
+
+async def _persist_runtime_label(
+    address: str,
+    chain: str,
+    flag_name: str,
+    flag_type: str,
+    flag_addr: str,
+    hops: int,
+    session: AsyncSession,
+) -> None:
+    """
+    Write a runtime-discovered label to the DB.
+    Skips if the address already has an authoritative label or is a known entity.
+    """
+    existing = await _get_label_full(address, session)
+    if existing:
+        # Never overwrite authoritative sources
+        if existing["source"] in _AUTHORITATIVE_SOURCES:
+            return
+        # Don't flag known legitimate entities
+        if existing["entity_type"] in _SKIP_ENTITY_TYPES:
+            return
+        # Already flagged from a previous trace — update only if this is closer
+        if existing["source"] == "runtime_trace":
+            return
+
+    relationship = "direct" if hops == 1 else f"{hops}-hop indirect"
+    confidence = "high" if hops == 1 else "medium" if hops == 2 else "low"
+    now = datetime.now(timezone.utc).isoformat()
+
+    label = Label(
+        address=address.lower(),
+        chain=chain,
+        entity_name=f"{relationship} link to {flag_name}",
+        entity_type="flagged_counterparty",
+        source="runtime_trace",
+        confidence=confidence,
+        updated_at=now,
+    )
+
+    try:
+        await session.merge(label)
+        await session.commit()
+    except Exception as exc:
+        logger.debug("Runtime label write failed for %s: %s", address[:12], exc)
+        await session.rollback()
