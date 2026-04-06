@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -45,7 +44,6 @@ async def lookup_address(
         raise ValidationError(f"No provider for chain: {chain}")
 
     provider = provider_cls()
-    warnings: list[str] = []
 
     try:
         txs, total = await provider.fetch_transactions(address, page=page, per_page=per_page)
@@ -108,7 +106,7 @@ async def lookup_address(
         failed_filtered=failed_count,
         dust_filtered=dust_count,
         stats=stats,
-        warnings=warnings,
+        warnings=[],
     )
 
 

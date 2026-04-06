@@ -249,19 +249,13 @@ async def test_pruning_exchange(db_session):
     mock_provider.fetch_transactions = AsyncMock(side_effect=fetch_with_exchange)
     mock_provider.close = AsyncMock()
 
-    async def mock_get_label(address, session):
+    async def mock_get_label_full(address, session):
         if address == "0xexchange":
-            return "Binance"
-        return None
-
-    async def mock_get_entity_type(address, session):
-        if address == "0xexchange":
-            return "exchange"
+            return {"entity_name": "Binance", "entity_type": "exchange", "source": "etherscan_known"}
         return None
 
     with patch("app.services.tracer.PROVIDERS", {"eth": lambda: mock_provider}), \
-         patch("app.services.tracer._get_label", side_effect=mock_get_label), \
-         patch("app.services.tracer._get_entity_type", side_effect=mock_get_entity_type):
+         patch("app.services.tracer._get_label_full", side_effect=mock_get_label_full):
         await run_trace(job, db_session)
 
     events = []

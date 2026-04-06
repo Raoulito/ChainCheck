@@ -73,6 +73,10 @@ class InvestigationResponse(BaseModel):
     version: int
 
 
+def _to_response(inv: Investigation) -> InvestigationResponse:
+    return _to_response(inv)
+
+
 @router.post("/investigations")
 async def create_investigation(
     body: CreateInvestigationRequest,
@@ -96,12 +100,7 @@ async def create_investigation(
     await _audit(session, user.id, "create", "investigation", inv.id, body.title)
     await session.commit()
 
-    return InvestigationResponse(
-        id=inv.id, title=inv.title, description=inv.description,
-        root_address=inv.root_address, root_chain=inv.root_chain,
-        status=inv.status, created_at=inv.created_at,
-        updated_at=inv.updated_at, version=inv.version,
-    )
+    return _to_response(inv)
 
 
 @router.get("/investigations")
@@ -115,15 +114,7 @@ async def list_investigations(
         .order_by(Investigation.updated_at.desc())
     )
     investigations = result.scalars().all()
-    return [
-        InvestigationResponse(
-            id=inv.id, title=inv.title, description=inv.description,
-            root_address=inv.root_address, root_chain=inv.root_chain,
-            status=inv.status, created_at=inv.created_at,
-            updated_at=inv.updated_at, version=inv.version,
-        )
-        for inv in investigations
-    ]
+    return [_to_response(inv) for inv in investigations]
 
 
 @router.get("/investigations/{investigation_id}")
@@ -179,12 +170,7 @@ async def update_investigation(
     await _audit(session, user.id, "update", "investigation", inv.id)
     await session.commit()
 
-    return InvestigationResponse(
-        id=inv.id, title=inv.title, description=inv.description,
-        root_address=inv.root_address, root_chain=inv.root_chain,
-        status=inv.status, created_at=inv.created_at,
-        updated_at=inv.updated_at, version=inv.version,
-    )
+    return _to_response(inv)
 
 
 @router.delete("/investigations/{investigation_id}")

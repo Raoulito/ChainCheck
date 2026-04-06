@@ -16,6 +16,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _to_label_info(label: Label) -> LabelInfo:
+    return LabelInfo(
+        address=label.address,
+        chain=label.chain,
+        entity_name=label.entity_name,
+        entity_type=label.entity_type,
+        source=label.source,
+        confidence=label.confidence,
+    )
+
+
 class CreateLabelRequest(BaseModel):
     address: str
     chain: str
@@ -51,14 +62,7 @@ async def get_label(
     label = result.scalar_one_or_none()
     if not label:
         return None
-    return LabelInfo(
-        address=label.address,
-        chain=label.chain,
-        entity_name=label.entity_name,
-        entity_type=label.entity_type,
-        source=label.source,
-        confidence=label.confidence,
-    )
+    return _to_label_info(label)
 
 
 @router.post("/labels/batch")
@@ -79,14 +83,7 @@ async def batch_labels(
     labels_map: dict[str, LabelInfo | None] = {a: None for a in addresses_lower}
 
     for label in result.scalars():
-        labels_map[label.address] = LabelInfo(
-            address=label.address,
-            chain=label.chain,
-            entity_name=label.entity_name,
-            entity_type=label.entity_type,
-            source=label.source,
-            confidence=label.confidence,
-        )
+        labels_map[label.address] = _to_label_info(label)
 
     return BatchLabelResponse(labels=labels_map)
 
@@ -99,17 +96,7 @@ async def search_labels(
     result = await session.execute(
         select(Label).where(Label.entity_name.ilike(f"%{entity}%")).limit(50)
     )
-    return [
-        LabelInfo(
-            address=l.address,
-            chain=l.chain,
-            entity_name=l.entity_name,
-            entity_type=l.entity_type,
-            source=l.source,
-            confidence=l.confidence,
-        )
-        for l in result.scalars()
-    ]
+    return [_to_label_info(l) for l in result.scalars()]
 
 
 @router.post("/labels")
@@ -144,14 +131,7 @@ async def create_label(
 
     await session.commit()
 
-    return LabelInfo(
-        address=body.address.lower(),
-        chain=body.chain,
-        entity_name=body.entity_name,
-        entity_type=body.entity_type,
-        source=body.source,
-        confidence=body.confidence,
-    )
+    return _to_label_info(existing_label if existing_label else label)
 
 
 @router.get("/labels/status")

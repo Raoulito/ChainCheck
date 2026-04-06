@@ -1,13 +1,11 @@
 import logging
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models.schemas import RiskScore
-from app.providers.bitcoin import BitcoinProvider
-from app.providers.ethereum import EthereumProvider
-from app.rate_limiter import limiter
+from app.providers.registry import PROVIDER_REGISTRY as PROVIDERS
 from app.services.clustering import get_cluster_info
 from app.services.exposure import compute_exposure
 from app.services.risk import RiskScorer
@@ -16,11 +14,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-PROVIDERS = {
-    "btc": BitcoinProvider,
-    "eth": EthereumProvider,
-}
-
 
 @router.get("/risk/{address}")
 async def get_risk_score(
@@ -28,7 +21,11 @@ async def get_risk_score(
     chain: str = "eth",
     session: AsyncSession = Depends(get_session),
 ) -> RiskScore:
-    provider = PROVIDERS[chain]()
+    provider_cls = PROVIDERS.get(chain)
+    if not provider_cls:
+        from app.errors import ValidationError
+        raise ValidationError(f"No provider for chain: {chain}")
+    provider = provider_cls()
     try:
         txs, _ = await provider.fetch_transactions(address, page=1, per_page=200)
     finally:
@@ -44,7 +41,11 @@ async def get_exposure(
     chain: str = "eth",
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    provider = PROVIDERS[chain]()
+    provider_cls = PROVIDERS.get(chain)
+    if not provider_cls:
+        from app.errors import ValidationError
+        raise ValidationError(f"No provider for chain: {chain}")
+    provider = provider_cls()
     try:
         txs, _ = await provider.fetch_transactions(address, page=1, per_page=200)
     finally:

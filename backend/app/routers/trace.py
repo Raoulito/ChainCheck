@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 
 from fastapi import APIRouter, Depends, Request
@@ -8,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
+from app.errors import ValidationError
 from app.jobs.trace_jobs import create_job, get_job, cancel_job, JobStatus
 from app.rate_limiter import limiter
 from app.services.tracer import run_trace
@@ -49,7 +49,6 @@ async def start_trace(
             max_txs_per_node=min(body.max_txs_per_node, 100),
         )
     except RuntimeError as exc:
-        from app.errors import ValidationError
         raise ValidationError(str(exc))
 
     # Launch BFS as background task
@@ -66,7 +65,6 @@ async def start_trace(
 async def trace_stream(job_id: str, request: Request):
     job = get_job(job_id)
     if not job:
-        from app.errors import ValidationError
         raise ValidationError(f"Job not found: {job_id}")
 
     async def event_generator():
@@ -111,7 +109,6 @@ async def trace_stream(job_id: str, request: Request):
 async def cancel_trace(job_id: str) -> dict:
     job = cancel_job(job_id)
     if not job:
-        from app.errors import ValidationError
         raise ValidationError(f"Job not found: {job_id}")
 
     return {
@@ -126,7 +123,6 @@ async def cancel_trace(job_id: str) -> dict:
 async def trace_status(job_id: str) -> dict:
     job = get_job(job_id)
     if not job:
-        from app.errors import ValidationError
         raise ValidationError(f"Job not found: {job_id}")
 
     return {

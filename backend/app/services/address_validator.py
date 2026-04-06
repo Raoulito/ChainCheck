@@ -1,6 +1,7 @@
 import re
 
 from app.errors import ValidationError
+from app.providers.registry import EVM_CHAINS, PROVIDER_REGISTRY
 
 # BTC: Legacy (1...), P2SH (3...), Bech32 (bc1q...), Taproot (bc1p...)
 BTC_PATTERN = re.compile(
@@ -10,9 +11,7 @@ BTC_PATTERN = re.compile(
 # EVM: 0x followed by 40 hex chars (shared by ETH, BSC, Polygon, etc.)
 EVM_PATTERN = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
-# Chain sets
-EVM_CHAINS = {"eth", "bsc", "polygon"}
-SUPPORTED_CHAINS = {"btc"} | EVM_CHAINS
+SUPPORTED_CHAINS = set(PROVIDER_REGISTRY.keys())
 
 
 def detect_chain(address: str) -> str:

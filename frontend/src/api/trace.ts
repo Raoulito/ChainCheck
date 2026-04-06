@@ -1,6 +1,5 @@
 import type { TraceRequest, TraceJobResponse } from '../types/api';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+import { API_BASE } from './config';
 
 export async function startTrace(body: TraceRequest): Promise<TraceJobResponse> {
   const res = await fetch(`${API_BASE}/api/trace`, {
