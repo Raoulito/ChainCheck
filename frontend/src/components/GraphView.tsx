@@ -392,7 +392,8 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
             riskColor: node.risk ? RISK_COLORS[node.risk] : undefined,
           },
           classes: node.hop === 0 ? 'root' : undefined,
-          position: { x: Math.random() * 400, y: Math.random() * 400 },
+          // Place based on hop rank so nodes land in the correct column before layout runs
+          position: { x: node.hop * 250 + 40, y: nodesRef.current.size * 60 },
         });
         const newCount = nodesRef.current.size;
         setNodeCount(newCount);
