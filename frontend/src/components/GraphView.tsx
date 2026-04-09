@@ -70,12 +70,14 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
     const [fullscreen, setFullscreen] = useState(false);
     const [debugLog, setDebugLog] = useState<string[]>([]);
     const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
+    const [ctxMode, setCtxMode] = useState<'menu' | 'label'>('menu');
     const [ctxEntityName, setCtxEntityName] = useState('');
     const [ctxEntityType, setCtxEntityType] = useState('exchange');
     const [ctxConfidence, setCtxConfidence] = useState('medium');
     const [ctxSaving, setCtxSaving] = useState(false);
     const [ctxStatus, setCtxStatus] = useState<string | null>(null);
     const [ctxExisting, setCtxExisting] = useState<string | null>(null);
+    const [hiddenNodes, setHiddenNodes] = useState<Set<string>>(new Set());
     const { positions, isComputing, computeLayout } = useGraphLayout();
 
     // Keep callback ref in sync without re-running the effect
@@ -239,22 +241,12 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
           y: rect.top + pos.y,
           address: addr,
         });
+        setCtxMode('menu');
         setCtxEntityName('');
         setCtxEntityType('exchange');
         setCtxConfidence('medium');
         setCtxStatus(null);
         setCtxExisting(null);
-        // Fetch existing label
-        getLabel(addr)
-          .then((label) => {
-            if (label) {
-              setCtxExisting(`${label.entity_name} (${label.entity_type}) [${label.source}]`);
-              setCtxEntityName(label.entity_name);
-              setCtxEntityType(label.entity_type);
-              setCtxConfidence(label.confidence);
-            }
-          })
-          .catch(() => {});
       });
 
       // Close context menu on background click/tap
@@ -333,6 +325,42 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       setLayoutType(type);
       runLayout(type);
     }, [runLayout]);
+
+    const handleHideNode = useCallback((address: string) => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      const node = cy.getElementById(address);
+      if (node.length) {
+        node.connectedEdges().hide();
+        node.hide();
+      }
+      setHiddenNodes(prev => new Set(prev).add(address));
+      setCtxMenu(null);
+      log(`Hidden node ${address.slice(0, 10)}...`);
+    }, [log]);
+
+    const handleShowAllNodes = useCallback(() => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      cy.elements().show();
+      setHiddenNodes(new Set());
+      log('All hidden nodes restored');
+    }, [log]);
+
+    const handleOpenLabelForm = useCallback(() => {
+      if (!ctxMenu) return;
+      setCtxMode('label');
+      getLabel(ctxMenu.address)
+        .then((label) => {
+          if (label) {
+            setCtxExisting(`${label.entity_name} (${label.entity_type}) [${label.source}]`);
+            setCtxEntityName(label.entity_name);
+            setCtxEntityType(label.entity_type);
+            setCtxConfidence(label.confidence);
+          }
+        })
+        .catch(() => {});
+    }, [ctxMenu]);
 
     const handleCtxSave = useCallback(async () => {
       if (!ctxMenu || !ctxEntityName.trim()) return;
@@ -537,6 +565,14 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
             >
               -
             </button>
+            {hiddenNodes.size > 0 && (
+              <button
+                onClick={handleShowAllNodes}
+                className="text-xs px-2 py-1 rounded bg-red-700 text-white hover:bg-red-600"
+              >
+                Show hidden ({hiddenNodes.size})
+              </button>
+            )}
             <button
               onClick={() => setVerbose(v => !v)}
               className={`text-xs px-2 py-1 rounded ${verbose ? 'bg-yellow-700 text-white' : 'bg-gray-700 text-gray-300'} hover:bg-gray-600`}
@@ -596,8 +632,32 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
           </div>
         )}
 
-        {/* Right-click label context menu */}
-        {ctxMenu && (
+        {/* Right-click context menu */}
+        {ctxMenu && ctxMode === 'menu' && (
+          <div
+            className="ctx-label-menu fixed z-[100] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 w-48"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          >
+            <p className="text-[10px] text-gray-500 font-mono px-3 py-1 truncate border-b border-gray-700">
+              {ctxMenu.address}
+            </p>
+            <button
+              onClick={() => handleHideNode(ctxMenu.address)}
+              className="w-full text-left text-xs text-gray-300 hover:bg-gray-700 px-3 py-2"
+            >
+              Hide node
+            </button>
+            <button
+              onClick={handleOpenLabelForm}
+              className="w-full text-left text-xs text-gray-300 hover:bg-gray-700 px-3 py-2"
+            >
+              Label node
+            </button>
+          </div>
+        )}
+
+        {/* Label editing form (opened from context menu) */}
+        {ctxMenu && ctxMode === 'label' && (
           <div
             className="ctx-label-menu fixed z-[100] bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 w-72"
             style={{ left: ctxMenu.x, top: ctxMenu.y }}
