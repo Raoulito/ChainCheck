@@ -174,8 +174,9 @@ class RiskScorer:
         )
 
     async def _get_label(self, address: str) -> Label | None:
+        from sqlalchemy import func
         result = await self._session.execute(
-            select(Label).where(Label.address == address.lower())
+            select(Label).where(func.lower(Label.address) == address.lower())
         )
         return result.scalar_one_or_none()
 
@@ -183,10 +184,12 @@ class RiskScorer:
         if not addresses:
             return {}
 
+        from sqlalchemy import func
+        lower_addresses = [a.lower() for a in addresses]
         result = await self._session.execute(
-            select(Label).where(Label.address.in_(addresses))
+            select(Label).where(func.lower(Label.address).in_(lower_addresses))
         )
-        return {label.address: label for label in result.scalars()}
+        return {label.address.lower(): label for label in result.scalars()}
 
     async def _enrich_address(self, address: str, chain: str) -> Label | None:
         """Try on-demand enrichment sources for an unlabeled address."""

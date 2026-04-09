@@ -22,6 +22,7 @@ interface GraphHandle {
   addNode: (node: { address: string; label: string | null; risk: string | null; hop: number }) => void;
   addEdges: (edges: { from: string; to: string; value: string; tx_hash: string; token: string; timestamp: number }[]) => void;
   getGraph: () => { nodes: unknown[]; edges: unknown[] };
+  finalLayout: () => void;
 }
 
 type TraceStatus = 'idle' | 'streaming' | 'completed' | 'failed' | 'cancelled';
@@ -82,6 +83,8 @@ export function useTraceStream(graphRef: React.RefObject<GraphHandle | null>) {
       setStatus('completed');
       setProgress({ ...counters.current });
       source.close();
+      // Trigger a final layout pass now that all nodes/edges are in
+      graphRef.current?.finalLayout();
     });
 
     source.addEventListener('failed', () => {

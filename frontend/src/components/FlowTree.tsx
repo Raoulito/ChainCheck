@@ -87,14 +87,17 @@ function buildTree(
 function formatFlowValue(value: string, token: string): string {
   const num = parseFloat(value);
   if (isNaN(num)) return `${value} ${token}`;
-  if (num >= 1e18) {
-    // Likely raw wei/satoshi — convert
-    if (token === 'ETH') return `${(num / 1e18).toFixed(4)} ETH`;
-    if (token === 'BTC') return `${(num / 1e8).toFixed(6)} BTC`;
-  }
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M ${token}`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K ${token}`;
-  return `${parseFloat(num.toFixed(6))} ${token}`;
+
+  // Values are always in smallest unit (wei/satoshi) — convert first
+  let converted = num;
+  if (token === 'ETH') converted = num / 1e18;
+  else if (token === 'BTC') converted = num / 1e8;
+
+  if (converted >= 1_000_000) return `${(converted / 1_000_000).toFixed(2)}M ${token}`;
+  if (converted >= 1_000) return `${(converted / 1_000).toFixed(2)}K ${token}`;
+  if (converted >= 1) return `${converted.toFixed(4)} ${token}`;
+  if (converted >= 0.0001) return `${converted.toFixed(6)} ${token}`;
+  return `${converted.toFixed(8)} ${token}`;
 }
 
 const RISK_COLORS: Record<string, string> = {

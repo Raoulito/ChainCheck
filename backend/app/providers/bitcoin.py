@@ -83,6 +83,9 @@ class BitcoinProvider(ChainProvider):
                 path = f"/address/{address}/txs/chain/{last_seen_txid}"
 
             response = await self._btc_request(path)
+            if response.status_code != 200:
+                from app.errors import ProviderError
+                raise ProviderError("bitcoin", f"API returned {response.status_code} for {path}", response.status_code)
             batch: list[dict] = response.json()
 
             if not batch:

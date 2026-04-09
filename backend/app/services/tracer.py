@@ -181,7 +181,8 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                         flagged_context[counterparty] = (flag_type, flag_name, flag_addr)
                         hops_away = hop + 1
                         relationship = "direct" if hops_away == 1 else f"{hops_away}-hop indirect"
-                        context_label = f"{flag_name} indirect link ({relationship})" if hops_away > 1 else f"direct link to {flag_name} ({flag_type})"
+                        truncated_flag = f"{flag_addr[:6]}...{flag_addr[-4:]}" if len(flag_addr) > 12 else flag_addr
+                        context_label = f"{flag_name} indirect link ({relationship}, via {truncated_flag})" if hops_away > 1 else f"direct link to {flag_name} ({flag_type})"
                         cp_label_text = f"{cp_label_text} | {context_label}" if cp_label_text else context_label
                         if not cp_risk:
                             cp_risk = "HIGH" if hops_away <= 5 else "MEDIUM" if hops_away <= 15 else "LOW"
@@ -336,7 +337,7 @@ async def _persist_runtime_label(
     label = Label(
         address=address.lower(),
         chain=chain,
-        entity_name=f"{flag_name} indirect link ({relationship})" if hops > 1 else f"direct link to {flag_name}",
+        entity_name=f"{flag_name} indirect link ({relationship}, via {flag_addr[:6]}...{flag_addr[-4:]})" if hops > 1 else f"direct link to {flag_name}",
         entity_type="flagged_counterparty",
         source="runtime_trace",
         confidence=confidence,

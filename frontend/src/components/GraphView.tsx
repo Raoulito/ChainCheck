@@ -28,6 +28,7 @@ export interface GraphHandle {
   addEdges: (edges: GraphEdge[]) => void;
   getGraph: () => { nodes: GraphNode[]; edges: GraphEdge[] };
   clear: () => void;
+  finalLayout: () => void;
 }
 
 const RISK_COLORS: Record<string, string> = {
@@ -294,19 +295,29 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       }
     }, [computeLayout, layoutType]);
 
-    // Auto re-layout when node count crosses thresholds during streaming
+    // Debounced auto-layout: re-layout 500ms after the last node arrives
+    const layoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastLayoutCountRef = useRef(0);
     useEffect(() => {
-      if (nodeCount > 0 && nodeCount !== lastLayoutCountRef.current) {
-        // Layout at 1, 5, 10, 20, 50, 100... or every 10 nodes after 10
-        const thresholds = [1, 3, 5, 10, 20, 50, 100, 200, 500];
-        const shouldLayout = thresholds.includes(nodeCount) ||
-          (nodeCount > 10 && nodeCount % 10 === 0);
-        if (shouldLayout) {
-          lastLayoutCountRef.current = nodeCount;
-          runLayout();
-        }
+      if (nodeCount === 0 || nodeCount === lastLayoutCountRef.current) return;
+
+      // Immediate layout for the very first node
+      if (nodeCount === 1) {
+        lastLayoutCountRef.current = nodeCount;
+        runLayout();
+        return;
       }
+
+      // Debounce: wait 500ms of quiet before re-laying out
+      if (layoutTimerRef.current) clearTimeout(layoutTimerRef.current);
+      layoutTimerRef.current = setTimeout(() => {
+        lastLayoutCountRef.current = nodeCount;
+        runLayout();
+      }, 500);
+
+      return () => {
+        if (layoutTimerRef.current) clearTimeout(layoutTimerRef.current);
+      };
     }, [nodeCount, runLayout]);
 
     const toggleLabels = useCallback(() => {
@@ -493,9 +504,15 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         lastLayoutCountRef.current = 0;
         setNodeCount(0);
         setEdgeCount(0);
+        setHiddenNodes(new Set());
         setDebugLog([]);
         cyRef.current?.elements().remove();
         log('Graph cleared');
+      },
+
+      finalLayout() {
+        log('Final layout triggered');
+        runLayout();
       },
     }));
 

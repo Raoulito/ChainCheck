@@ -41,8 +41,9 @@ async def compute_exposure(
     report = ExposureReport()
 
     # Check if the address itself is labeled (sanctioned, mixer, etc.)
+    from sqlalchemy import func
     own_label_result = await session.execute(
-        select(Label).where(Label.address == address.lower())
+        select(Label).where(func.lower(Label.address) == address.lower())
     )
     own_label = own_label_result.scalar_one_or_none()
 
@@ -80,9 +81,9 @@ async def compute_exposure(
     # Batch lookup labels for all counterparties
     addresses = list(counterparty_volumes.keys())
     result = await session.execute(
-        select(Label).where(Label.address.in_(addresses))
+        select(Label).where(func.lower(Label.address).in_(addresses))
     )
-    label_map = {label.address: label for label in result.scalars()}
+    label_map = {label.address.lower(): label for label in result.scalars()}
 
     # Compute volume by entity type
     volume_by_type: dict[str, Decimal] = {}
