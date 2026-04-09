@@ -60,6 +60,22 @@ class RiskScorer:
                 severity="HIGH",
             ))
 
+        if own_label and own_label.entity_type == "flagged_counterparty":
+            # Extract hop count from entity_name, e.g. "LAZARUS GROUP indirect link (4-hop)"
+            import re
+            hop_match = re.search(r"(\d+)-hop", own_label.entity_name)
+            if hop_match:
+                hops = int(hop_match.group(1))
+                severity = "HIGH" if hops <= 5 else "MEDIUM" if hops <= 15 else "LOW"
+            else:
+                # "direct link to ..." format
+                severity = "HIGH"
+            reasons.append(RiskReason(
+                rule="flagged_counterparty",
+                detail=f"Address is a {own_label.entity_name} (source: {own_label.source})",
+                severity=severity,
+            ))
+
         # Check counterparties in transaction history
         counterparty_addresses = set()
         for tx in transactions:

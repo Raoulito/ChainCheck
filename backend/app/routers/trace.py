@@ -21,7 +21,7 @@ class TraceRequest(BaseModel):
     address: str
     chain: str
     direction: str = "forward"
-    max_hops: int = 3
+    max_hops: int = 15
     min_value: str = "0"
     max_txs_per_node: int = 50
 
@@ -44,7 +44,7 @@ async def start_trace(
             address=body.address,
             chain=body.chain,
             direction=body.direction,
-            max_hops=min(body.max_hops, 5),
+            max_hops=min(body.max_hops, 15),
             min_value=body.min_value,
             max_txs_per_node=min(body.max_txs_per_node, 100),
         )
