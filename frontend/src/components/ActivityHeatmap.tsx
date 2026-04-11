@@ -9,11 +9,11 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 function getHeatColor(intensity: number): string {
-  if (intensity === 0) return 'bg-gray-800';
-  if (intensity < 0.25) return 'bg-blue-900/50';
-  if (intensity < 0.5) return 'bg-blue-700/60';
-  if (intensity < 0.75) return 'bg-blue-500/70';
-  return 'bg-blue-400/80';
+  if (intensity === 0) return 'var(--cs-bg-surface)';
+  if (intensity < 0.25) return '#00d4aa22';
+  if (intensity < 0.5) return '#00d4aa44';
+  if (intensity < 0.75) return '#00d4aa77';
+  return '#00d4aaaa';
 }
 
 export function ActivityHeatmap({ transactions }: ActivityHeatmapProps) {
@@ -30,7 +30,6 @@ export function ActivityHeatmap({ transactions }: ActivityHeatmapProps) {
       max = Math.max(max, counts[day][hour]);
     }
 
-    // Find peak
     let pDay = 0, pHour = 0, pMax = 0;
     for (let d = 0; d < 7; d++) {
       for (let h = 0; h < 24; h++) {
@@ -49,22 +48,22 @@ export function ActivityHeatmap({ transactions }: ActivityHeatmapProps) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-medium text-gray-300">Activity Heatmap (UTC)</h4>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-xs font-semibold font-display uppercase tracking-wider" style={{ color: 'var(--cs-text-muted)' }}>Activity Heatmap (UTC)</h4>
         {maxCount > 0 && (
-          <span className="text-xs text-gray-500">
+          <span className="text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
             Peak: {DAYS[peakDay]} {peakHour}:00-{peakHour + 1}:00 UTC
           </span>
         )}
       </div>
 
       <div className="overflow-x-auto">
-        <table className="text-xs">
+        <table className="text-xs font-mono">
           <thead>
             <tr>
               <th className="w-8" />
               {HOURS.filter(h => h % 2 === 0).map((h) => (
-                <th key={h} colSpan={2} className="text-gray-500 font-normal px-0.5">
+                <th key={h} colSpan={2} className="font-normal px-0.5" style={{ color: 'var(--cs-text-dim)' }}>
                   {String(h).padStart(2, '0')}
                 </th>
               ))}
@@ -73,14 +72,15 @@ export function ActivityHeatmap({ transactions }: ActivityHeatmapProps) {
           <tbody>
             {DAYS.map((day, di) => (
               <tr key={day}>
-                <td className="text-gray-500 pr-1 text-right">{day}</td>
+                <td className="pr-1 text-right" style={{ color: 'var(--cs-text-muted)' }}>{day}</td>
                 {HOURS.map((h) => {
                   const count = grid[di][h];
                   const intensity = maxCount > 0 ? count / maxCount : 0;
                   return (
                     <td
                       key={h}
-                      className={`w-3 h-3 ${getHeatColor(intensity)}`}
+                      className="w-3 h-3 rounded-sm"
+                      style={{ background: getHeatColor(intensity) }}
                       title={`${day} ${h}:00 — ${count} tx${count !== 1 ? 's' : ''}`}
                     />
                   );

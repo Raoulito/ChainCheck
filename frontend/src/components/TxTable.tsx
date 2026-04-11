@@ -38,7 +38,6 @@ export function TxTable({
 
   const enrichMutation = usePriceEnrichment(chain, address);
 
-  // Enrich prices for visible transactions
   useEffect(() => {
     if (transactions.length === 0) return;
 
@@ -55,7 +54,6 @@ export function TxTable({
     }
   }, [transactions, page]);
 
-  // Filter
   let filtered = transactions;
   if (!showSpam) {
     filtered = filtered.filter((tx) => tx.spam_score === 'clean');
@@ -64,7 +62,6 @@ export function TxTable({
     filtered = filtered.filter((tx) => tx.status !== 'failed');
   }
 
-  // Sort
   const sorted = [...filtered].sort((a, b) => {
     let cmp = 0;
     if (sortField === 'timestamp') {
@@ -104,31 +101,33 @@ export function TxTable({
           }}
         />
       )}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto cs-card" style={{ borderRadius: '12px' }}>
         <table className="w-full text-sm text-left">
-          <thead className="text-xs text-gray-400 uppercase border-b border-gray-700">
-            <tr>
-              <th className="px-3 py-3">Tx Hash</th>
-              <th className="px-3 py-3">Type</th>
-              <th className="px-3 py-3">From</th>
-              <th className="px-3 py-3">To</th>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--cs-border)' }}>
+              <th className="px-4 py-3 text-xs uppercase tracking-wider font-display font-semibold" style={{ color: 'var(--cs-text-muted)' }}>Tx Hash</th>
+              <th className="px-4 py-3 text-xs uppercase tracking-wider font-display font-semibold" style={{ color: 'var(--cs-text-muted)' }}>Type</th>
+              <th className="px-4 py-3 text-xs uppercase tracking-wider font-display font-semibold" style={{ color: 'var(--cs-text-muted)' }}>From</th>
+              <th className="px-4 py-3 text-xs uppercase tracking-wider font-display font-semibold" style={{ color: 'var(--cs-text-muted)' }}>To</th>
               <th
-                className="px-3 py-3 cursor-pointer hover:text-gray-200"
+                className="px-4 py-3 text-xs uppercase tracking-wider font-display font-semibold cursor-pointer"
+                style={{ color: 'var(--cs-text-muted)' }}
                 onClick={() => handleSort('value')}
               >
                 Value{sortIcon('value')}
               </th>
-              <th className="px-3 py-3">USD</th>
+              <th className="px-4 py-3 text-xs uppercase tracking-wider font-display font-semibold" style={{ color: 'var(--cs-text-muted)' }}>USD</th>
               <th
-                className="px-3 py-3 cursor-pointer hover:text-gray-200"
+                className="px-4 py-3 text-xs uppercase tracking-wider font-display font-semibold cursor-pointer"
+                style={{ color: 'var(--cs-text-muted)' }}
                 onClick={() => handleSort('timestamp')}
               >
                 Time{sortIcon('timestamp')}
               </th>
-              <th className="px-3 py-3">Status</th>
+              <th className="px-4 py-3 text-xs uppercase tracking-wider font-display font-semibold" style={{ color: 'var(--cs-text-muted)' }}>Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800">
+          <tbody>
             {sorted.map((tx) => (
               <TxRow
                 key={`${tx.tx_hash}-${tx.tx_type}`}
@@ -141,7 +140,7 @@ export function TxTable({
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm font-display" style={{ color: 'var(--cs-text-muted)' }}>
                   No transactions to display
                 </td>
               </tr>
@@ -151,21 +150,21 @@ export function TxTable({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
+        <div className="flex items-center justify-center gap-3 mt-4">
           <button
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
-            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-300 rounded text-sm"
+            className="cs-btn-ghost"
           >
             Previous
           </button>
-          <span className="text-gray-400 text-sm">
-            Page {page} of {totalPages}
+          <span className="text-sm font-mono" style={{ color: 'var(--cs-text-secondary)' }}>
+            {page} / {totalPages}
           </span>
           <button
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
-            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-300 rounded text-sm"
+            className="cs-btn-ghost"
           >
             Next
           </button>
@@ -189,7 +188,7 @@ function TxRow({
   onSelect: () => void;
 }) {
   const isFailed = tx.status === 'failed';
-  const rowClass = isFailed ? 'opacity-50 line-through' : '';
+  const rowStyle = isFailed ? { opacity: 0.5, textDecoration: 'line-through' } : {};
 
   const isReceived =
     chain === 'eth'
@@ -197,62 +196,69 @@ function TxRow({
       : tx.from_address?.toLowerCase() !== lookupAddress.toLowerCase();
 
   return (
-    <tr className={`hover:bg-gray-800/50 cursor-pointer ${rowClass}`} onClick={onSelect}>
-      <td className="px-3 py-3 font-mono text-xs">
+    <tr
+      className="cs-table-row cursor-pointer"
+      style={{ ...rowStyle, borderBottom: '1px solid var(--cs-border)' }}
+      onClick={onSelect}
+    >
+      <td className="px-4 py-3 font-mono text-xs">
         <a
           href={chain === 'eth' ? `https://etherscan.io/tx/${tx.tx_hash}` : `https://blockstream.info/tx/${tx.tx_hash}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-400 hover:text-blue-300"
+          style={{ color: 'var(--cs-accent)' }}
+          className="hover:underline"
         >
           {truncateHash(tx.tx_hash)}
         </a>
       </td>
-      <td className="px-3 py-3">
-        <span className="text-xs text-gray-400">
+      <td className="px-4 py-3">
+        <span className="text-xs font-display" style={{ color: 'var(--cs-text-muted)' }}>
           {tx.method_name || tx.tx_type}
         </span>
       </td>
-      <td className="px-3 py-3 font-mono text-xs">
+      <td className="px-4 py-3 font-mono text-xs">
         {tx.from_address ? (
           <AddressHoverCard address={tx.from_address} chain={chain} onAddressClick={onAddressClick}>
             <button
               onClick={(e) => { e.stopPropagation(); onAddressClick(chain, tx.from_address!); }}
-              className="text-blue-400 hover:text-blue-300"
+              style={{ color: 'var(--cs-accent)' }}
+              className="hover:underline"
             >
               {truncateAddress(tx.from_address)}
             </button>
           </AddressHoverCard>
         ) : (
-          <span className="text-gray-600">—</span>
+          <span style={{ color: 'var(--cs-text-dim)' }}>&mdash;</span>
         )}
       </td>
-      <td className="px-3 py-3 font-mono text-xs">
+      <td className="px-4 py-3 font-mono text-xs">
         {tx.to_address ? (
           <AddressHoverCard address={tx.to_address} chain={chain} onAddressClick={onAddressClick}>
             <button
               onClick={(e) => { e.stopPropagation(); onAddressClick(chain, tx.to_address!); }}
-              className="text-blue-400 hover:text-blue-300"
+              style={{ color: 'var(--cs-accent)' }}
+              className="hover:underline"
             >
               {truncateAddress(tx.to_address)}
             </button>
           </AddressHoverCard>
         ) : (
-          <span className="text-gray-600">—</span>
+          <span style={{ color: 'var(--cs-text-dim)' }}>&mdash;</span>
         )}
       </td>
-      <td className="px-3 py-3">
-        <span className={isReceived ? 'text-green-400' : 'text-red-400'}>
+      <td className="px-4 py-3 font-mono text-xs">
+        <span style={{ color: isReceived ? 'var(--cs-green)' : 'var(--cs-red)' }}>
           {isReceived ? '+' : '-'}{formatValue(tx.value_human, tx.token)}
         </span>
       </td>
-      <td className="px-3 py-3 text-gray-400 text-xs">
+      <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
         {formatUsd(tx.value_usd_at_time)}
       </td>
-      <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">
+      <td className="px-4 py-3 text-xs font-mono whitespace-nowrap" style={{ color: 'var(--cs-text-muted)' }}>
         {formatTimestamp(tx.timestamp)}
       </td>
-      <td className="px-3 py-3">
+      <td className="px-4 py-3">
         <div className="flex items-center gap-1">
           {tx.status === 'failed' && <FailedTag />}
           {tx.spam_score !== 'clean' && <SpamTag />}

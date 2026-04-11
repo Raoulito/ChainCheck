@@ -26,31 +26,33 @@ export function ClusterBadge({ cluster, onAddressClick }: ClusterBadgeProps) {
     <div className="inline-block">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-900/40 text-indigo-300 border border-indigo-700"
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold font-display"
+        style={{ background: 'var(--cs-purple-dim)', color: 'var(--cs-purple)', border: '1px solid var(--cs-purple)' }}
       >
         Cluster ({cluster.address_count} addrs)
-        <span className="opacity-60">{expanded ? '\u25B2' : '\u25BC'}</span>
+        <span style={{ opacity: 0.6 }}>{expanded ? '\u25B2' : '\u25BC'}</span>
       </button>
 
       {cluster.label && (
-        <span className="ml-1 text-xs text-gray-400">
+        <span className="ml-1 text-xs font-display" style={{ color: 'var(--cs-text-muted)' }}>
           &rarr; {cluster.label.entity_name}
         </span>
       )}
 
       {expanded && (
-        <div className="mt-1 bg-gray-800 border border-indigo-800 rounded p-2 max-h-40 overflow-y-auto">
+        <div className="mt-1 cs-card-surface p-2 max-h-40 overflow-y-auto" style={{ borderColor: 'var(--cs-purple)' }}>
           {cluster.addresses.slice(0, 20).map((addr) => (
             <button
               key={addr}
               onClick={() => onAddressClick('btc', addr)}
-              className="block font-mono text-xs text-blue-400 hover:text-blue-300 py-0.5"
+              className="block font-mono text-xs py-0.5 hover:underline"
+              style={{ color: 'var(--cs-accent)' }}
             >
               {truncateAddress(addr, 10)}
             </button>
           ))}
           {cluster.address_count > 20 && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs mt-1 font-display" style={{ color: 'var(--cs-text-muted)' }}>
               ...and {cluster.address_count - 20} more
             </p>
           )}

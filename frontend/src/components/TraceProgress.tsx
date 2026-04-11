@@ -24,21 +24,21 @@ export function TraceProgress({ progress, status, metadata }: TraceProgressProps
     : 0;
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-medium text-gray-200">
+    <div className="cs-card p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold font-display" style={{ color: 'var(--cs-text-primary)' }}>
           {status === 'streaming' && (
-            <>
-              <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2" />
+            <span className="flex items-center gap-2">
+              <span className="cs-live-dot" />
               Tracing hop {progress?.hop ?? 0} of {progress?.maxHops ?? '?'}...
-            </>
+            </span>
           )}
-          {status === 'completed' && 'Trace complete'}
-          {status === 'failed' && 'Trace failed'}
-          {status === 'cancelled' && 'Trace cancelled'}
+          {status === 'completed' && <span style={{ color: 'var(--cs-green)' }}>Trace complete</span>}
+          {status === 'failed' && <span style={{ color: 'var(--cs-red)' }}>Trace failed</span>}
+          {status === 'cancelled' && <span style={{ color: 'var(--cs-yellow)' }}>Trace cancelled</span>}
         </p>
         {metadata && (
-          <span className="text-xs text-gray-500">
+          <span className="text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
             {(metadata.trace_time_ms / 1000).toFixed(1)}s
           </span>
         )}
@@ -46,32 +46,36 @@ export function TraceProgress({ progress, status, metadata }: TraceProgressProps
 
       <div className="grid grid-cols-3 gap-4 text-xs">
         <div>
-          <span className="text-gray-500">Addresses</span>
-          <p className="text-gray-200 font-medium">{progress?.nodes ?? 0}</p>
+          <span className="font-display uppercase tracking-wider" style={{ color: 'var(--cs-text-muted)', fontSize: '10px' }}>Addresses</span>
+          <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--cs-text-primary)' }}>{progress?.nodes ?? 0}</p>
         </div>
         <div>
-          <span className="text-gray-500">Edges</span>
-          <p className="text-gray-200 font-medium">{progress?.edges ?? 0}</p>
+          <span className="font-display uppercase tracking-wider" style={{ color: 'var(--cs-text-muted)', fontSize: '10px' }}>Edges</span>
+          <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--cs-text-primary)' }}>{progress?.edges ?? 0}</p>
         </div>
         <div>
-          <span className="text-gray-500">API calls</span>
-          <p className="text-gray-200 font-medium">
+          <span className="font-display uppercase tracking-wider" style={{ color: 'var(--cs-text-muted)', fontSize: '10px' }}>API calls</span>
+          <p className="font-mono font-semibold mt-0.5" style={{ color: 'var(--cs-text-primary)' }}>
             {progress?.apiCalls ?? 0}/{progress?.apiCallsLimit ?? 200}
           </p>
         </div>
       </div>
 
       {/* API budget bar */}
-      <div className="mt-2 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+      <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--cs-bg-base)' }}>
         <div
-          className={`h-full rounded-full transition-all ${apiPct > 80 ? 'bg-red-500' : 'bg-blue-500'}`}
-          style={{ width: `${apiPct}%` }}
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${apiPct}%`,
+            background: apiPct > 80
+              ? `linear-gradient(90deg, var(--cs-orange), var(--cs-red))`
+              : `linear-gradient(90deg, var(--cs-accent), var(--cs-accent-bright))`,
+          }}
         />
       </div>
 
-      {/* Pruning info */}
       {metadata && metadata.pruned_at.length > 0 && (
-        <div className="mt-2 text-xs text-gray-500">
+        <div className="mt-2 text-xs font-display" style={{ color: 'var(--cs-text-muted)' }}>
           Pruned {metadata.pruned_at.length} nodes (
           {metadata.pruned_at.map((p) => p.reason).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
           )

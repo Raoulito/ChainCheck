@@ -389,40 +389,52 @@ async def import_walletexplorer_btc(session: AsyncSession) -> int:
     labels_to_insert: list[dict] = []
     api_success = False
 
-    # Phase 1: Try WalletExplorer API
+    # Phase 1: Try WalletExplorer API (deep pagination — up to 5000 per wallet)
+    page_size = 100
+    max_per_wallet = 5000
     try:
         async with httpx.AsyncClient(
             timeout=15.0,
             headers={"User-Agent": "ChainScope/1.0 (forensics tool)"},
         ) as client:
             for api_name, display_name, entity_type in _WE_WALLETS:
+                offset = 0
+                wallet_count = 0
                 try:
-                    resp = await client.get(
-                        "https://www.walletexplorer.com/api/1/wallet-addresses",
-                        params={"wallet": api_name, "from": 0, "count": 100},
-                    )
-                    if resp.status_code != 200:
-                        continue
+                    while offset < max_per_wallet:
+                        resp = await client.get(
+                            "https://www.walletexplorer.com/api/1/wallet-addresses",
+                            params={"wallet": api_name, "from": offset, "count": page_size},
+                        )
+                        if resp.status_code != 200:
+                            break
 
-                    data = resp.json()
-                    addrs = data.get("addresses", [])
-                    if not addrs:
-                        continue
+                        data = resp.json()
+                        addrs = data.get("addresses", [])
+                        if not addrs:
+                            break
 
-                    api_success = True
-                    for entry in addrs:
-                        addr = entry.get("address", "")
-                        if addr:
-                            labels_to_insert.append({
-                                "address": addr,
-                                "chain": "btc",
-                                "entity_name": display_name,
-                                "entity_type": entity_type,
-                                "source": "walletexplorer",
-                                "confidence": "high",
-                            })
+                        api_success = True
+                        for entry in addrs:
+                            addr = entry.get("address", "")
+                            if addr:
+                                labels_to_insert.append({
+                                    "address": addr,
+                                    "chain": "btc",
+                                    "entity_name": display_name,
+                                    "entity_type": entity_type,
+                                    "source": "walletexplorer",
+                                    "confidence": "high",
+                                })
+                                wallet_count += 1
 
-                    await asyncio.sleep(2)  # polite rate limiting
+                        if len(addrs) < page_size:
+                            break
+                        offset += page_size
+                        await asyncio.sleep(2)  # polite rate limiting
+
+                    if wallet_count > 0:
+                        logger.debug("WalletExplorer: %s — %d addresses", display_name, wallet_count)
 
                 except Exception as e:
                     logger.debug("WalletExplorer API failed for %s: %s", api_name, e)

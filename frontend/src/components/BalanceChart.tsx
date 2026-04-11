@@ -18,7 +18,6 @@ export function BalanceChart({ transactions, address, chain }: BalanceChartProps
   const chartData = useMemo(() => {
     if (transactions.length === 0) return [];
 
-    // Sort by timestamp
     const sorted = [...transactions]
       .filter(tx => tx.status !== 'failed')
       .sort((a, b) => a.timestamp - b.timestamp);
@@ -46,7 +45,6 @@ export function BalanceChart({ transactions, address, chain }: BalanceChartProps
       });
     }
 
-    // Deduplicate by date (keep last point per day)
     const byDate = new Map<string, typeof points[0]>();
     for (const p of points) {
       byDate.set(p.date, p);
@@ -58,23 +56,23 @@ export function BalanceChart({ transactions, address, chain }: BalanceChartProps
 
   return (
     <div>
-      <h4 className="text-xs font-medium text-gray-300 mb-2">Balance History</h4>
+      <h4 className="text-xs font-semibold font-display uppercase tracking-wider mb-3" style={{ color: 'var(--cs-text-muted)' }}>Balance History</h4>
       <ResponsiveContainer width="100%" height={180}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3a" />
+          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#4a5568' }} />
           <YAxis
-            tick={{ fontSize: 10, fill: '#9ca3af' }}
-            label={{ value: token, angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#9ca3af' } }}
+            tick={{ fontSize: 10, fill: '#4a5568' }}
+            label={{ value: token, angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#4a5568' } }}
           />
           <Tooltip
-            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
-            labelStyle={{ color: '#e5e7eb' }}
+            contentStyle={{ backgroundColor: '#0f1420', border: '1px solid #1e2a3a', borderRadius: '8px', fontFamily: 'var(--font-mono)' }}
+            labelStyle={{ color: '#e8ecf4' }}
             formatter={(value: number) => [`${value} ${token}`, 'Balance']}
           />
           <Line
             dataKey="balance"
-            stroke="#3b82f6"
+            stroke="#00d4aa"
             dot={false}
             strokeWidth={2}
           />

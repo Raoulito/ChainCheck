@@ -5,13 +5,14 @@ interface ErrorBannerProps {
 
 export function ErrorBanner({ message, onRetry }: ErrorBannerProps) {
   return (
-    <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 text-center">
-      <p className="text-red-400 font-medium">Error</p>
-      <p className="text-red-300 text-sm mt-1">{message}</p>
+    <div className="rounded-xl p-5 text-center" style={{ background: 'var(--cs-red-dim)', border: '1px solid var(--cs-red)' }}>
+      <p className="font-semibold font-display" style={{ color: 'var(--cs-red)' }}>Error</p>
+      <p className="text-sm mt-1 font-display" style={{ color: 'var(--cs-red)', opacity: 0.8 }}>{message}</p>
       {onRetry && (
         <button
           onClick={onRetry}
-          className="mt-3 px-4 py-1.5 bg-red-800 hover:bg-red-700 text-red-200 text-sm rounded transition-colors"
+          className="cs-btn-danger mt-3"
+          style={{ padding: '6px 20px', fontSize: '12px' }}
         >
           Retry
         </button>

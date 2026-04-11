@@ -27,13 +27,14 @@ const EXAMPLES = [
 
 export function ExampleLookups({ onSelect }: ExampleLookupsProps) {
   return (
-    <div className="flex flex-wrap gap-2 justify-center mt-4">
-      <span className="text-gray-400 text-sm self-center">Try:</span>
-      {EXAMPLES.map((ex) => (
+    <div className="flex flex-wrap gap-2 justify-center mt-6">
+      <span className="text-xs font-display self-center" style={{ color: 'var(--cs-text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Try</span>
+      {EXAMPLES.map((ex, i) => (
         <button
           key={ex.address}
           onClick={() => onSelect(ex.chain, ex.address)}
-          className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-md border border-gray-700 transition-colors"
+          className="cs-btn-ghost cs-fade-up"
+          style={{ animationDelay: `${0.3 + i * 0.05}s` }}
         >
           {ex.label}
         </button>

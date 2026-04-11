@@ -36,16 +36,13 @@ export function TraceControls({
   };
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
+    <div className="cs-card p-4 mb-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={isTracing ? onCancel : handleStart}
-            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
-              isTracing
-                ? 'bg-red-700 hover:bg-red-600 text-white'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
+            className={isTracing ? 'cs-btn-danger' : 'cs-btn-primary'}
+            style={{ padding: '8px 20px', fontSize: '13px' }}
           >
             {isTracing ? 'Cancel Trace' : 'Start Trace'}
           </button>
@@ -53,7 +50,7 @@ export function TraceControls({
           <select
             value={direction}
             onChange={(e) => setDirection(e.target.value as 'forward' | 'backward')}
-            className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-600"
+            className="cs-select"
             disabled={isTracing}
           >
             <option value="forward">Forward (follow outflows)</option>
@@ -63,7 +60,7 @@ export function TraceControls({
           <select
             value={maxHops}
             onChange={(e) => setMaxHops(Number(e.target.value))}
-            className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-600"
+            className="cs-select"
             disabled={isTracing}
           >
             {[1, 2, 3, 4, 5].map((h) => (
@@ -74,31 +71,34 @@ export function TraceControls({
 
         <button
           onClick={() => setExpanded(!expanded)}
-          className="text-xs text-gray-400 hover:text-gray-200"
+          className="text-xs font-display transition-colors"
+          style={{ color: 'var(--cs-text-muted)' }}
+          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--cs-text-secondary)'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--cs-text-muted)'}
         >
           {expanded ? 'Less options' : 'More options'}
         </button>
       </div>
 
       {expanded && (
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Min value (raw units)</label>
+            <label className="text-xs font-display mb-1 block" style={{ color: 'var(--cs-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Min value (raw units)</label>
             <input
               type="text"
               value={minValue}
               onChange={(e) => setMinValue(e.target.value)}
-              className="w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-600"
+              className="cs-input w-full"
               disabled={isTracing}
             />
           </div>
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Max txs per node</label>
+            <label className="text-xs font-display mb-1 block" style={{ color: 'var(--cs-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Max txs per node</label>
             <input
               type="number"
               value={maxTxsPerNode}
               onChange={(e) => setMaxTxsPerNode(Number(e.target.value))}
-              className="w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-600"
+              className="cs-input w-full"
               disabled={isTracing}
               min={1}
               max={100}

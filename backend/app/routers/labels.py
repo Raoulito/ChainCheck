@@ -67,6 +67,30 @@ class LabelStatusResponse(BaseModel):
     by_chain: dict[str, int]
 
 
+@router.get("/labels/status")
+async def label_status(
+    session: AsyncSession = Depends(get_session),
+) -> LabelStatusResponse:
+    result = await session.execute(select(Label))
+    labels = list(result.scalars())
+
+    by_source: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    by_chain: dict[str, int] = {}
+
+    for l in labels:
+        by_source[l.source] = by_source.get(l.source, 0) + 1
+        by_type[l.entity_type] = by_type.get(l.entity_type, 0) + 1
+        by_chain[l.chain] = by_chain.get(l.chain, 0) + 1
+
+    return LabelStatusResponse(
+        total_labels=len(labels),
+        by_source=by_source,
+        by_type=by_type,
+        by_chain=by_chain,
+    )
+
+
 @router.get("/labels/{address}")
 async def get_label(
     address: str,
@@ -301,25 +325,3 @@ async def trigger_label_sync_stream(request: Request):
     )
 
 
-@router.get("/labels/status")
-async def label_status(
-    session: AsyncSession = Depends(get_session),
-) -> LabelStatusResponse:
-    result = await session.execute(select(Label))
-    labels = list(result.scalars())
-
-    by_source: dict[str, int] = {}
-    by_type: dict[str, int] = {}
-    by_chain: dict[str, int] = {}
-
-    for l in labels:
-        by_source[l.source] = by_source.get(l.source, 0) + 1
-        by_type[l.entity_type] = by_type.get(l.entity_type, 0) + 1
-        by_chain[l.chain] = by_chain.get(l.chain, 0) + 1
-
-    return LabelStatusResponse(
-        total_labels=len(labels),
-        by_source=by_source,
-        by_type=by_type,
-        by_chain=by_chain,
-    )

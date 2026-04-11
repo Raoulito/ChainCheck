@@ -33,7 +33,7 @@ function timeAgo(isoDate: string): string {
 
 function isStale(isoDate: string): boolean {
   const diff = Date.now() - new Date(isoDate).getTime();
-  return diff > 7 * 24 * 60 * 60 * 1000; // older than 7 days
+  return diff > 7 * 24 * 60 * 60 * 1000;
 }
 
 export function LabelManager() {
@@ -134,10 +134,7 @@ export function LabelManager() {
   if (!open) {
     return (
       <div className="mt-4">
-        <button
-          onClick={() => setOpen(true)}
-          className="text-sm px-4 py-2 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600"
-        >
+        <button onClick={() => setOpen(true)} className="cs-btn-ghost">
           Label Manager
         </button>
       </div>
@@ -145,12 +142,15 @@ export function LabelManager() {
   }
 
   return (
-    <div className="mt-4 bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-medium text-white">Label Manager</h2>
+    <div className="mt-4 cs-card p-5">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-lg font-semibold font-display" style={{ color: 'var(--cs-text-primary)' }}>Label Manager</h2>
         <button
           onClick={() => setOpen(false)}
-          className="text-gray-400 hover:text-white text-sm px-2"
+          className="text-sm font-display transition-colors"
+          style={{ color: 'var(--cs-text-muted)' }}
+          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--cs-text-primary)'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--cs-text-muted)'}
         >
           Close
         </button>
@@ -158,33 +158,33 @@ export function LabelManager() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-gray-900 rounded p-3">
-            <p className="text-xs text-gray-400">Total labels</p>
-            <p className="text-xl font-bold text-white">{stats.total_labels.toLocaleString()}</p>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="cs-card-surface p-3">
+            <p className="text-xs font-display uppercase tracking-wider" style={{ color: 'var(--cs-text-muted)' }}>Total labels</p>
+            <p className="text-xl font-bold font-mono mt-1" style={{ color: 'var(--cs-accent)' }}>{stats.total_labels.toLocaleString()}</p>
           </div>
-          <div className="bg-gray-900 rounded p-3">
-            <p className="text-xs text-gray-400 mb-1">By source</p>
+          <div className="cs-card-surface p-3">
+            <p className="text-xs font-display uppercase tracking-wider mb-1" style={{ color: 'var(--cs-text-muted)' }}>By source</p>
             <div className="space-y-0.5">
               {Object.entries(stats.by_source)
                 .sort(([, a], [, b]) => b - a)
                 .map(([src, cnt]) => (
-                  <div key={src} className="flex justify-between text-xs">
-                    <span className="text-gray-300">{src}</span>
-                    <span className="text-gray-400">{cnt}</span>
+                  <div key={src} className="flex justify-between text-xs font-mono">
+                    <span style={{ color: 'var(--cs-text-secondary)' }}>{src}</span>
+                    <span style={{ color: 'var(--cs-text-muted)' }}>{cnt}</span>
                   </div>
                 ))}
             </div>
           </div>
-          <div className="bg-gray-900 rounded p-3">
-            <p className="text-xs text-gray-400 mb-1">By type</p>
+          <div className="cs-card-surface p-3">
+            <p className="text-xs font-display uppercase tracking-wider mb-1" style={{ color: 'var(--cs-text-muted)' }}>By type</p>
             <div className="space-y-0.5">
               {Object.entries(stats.by_type)
                 .sort(([, a], [, b]) => b - a)
                 .map(([typ, cnt]) => (
-                  <div key={typ} className="flex justify-between text-xs">
-                    <span className="text-gray-300">{typ}</span>
-                    <span className="text-gray-400">{cnt}</span>
+                  <div key={typ} className="flex justify-between text-xs font-mono">
+                    <span style={{ color: 'var(--cs-text-secondary)' }}>{typ}</span>
+                    <span style={{ color: 'var(--cs-text-muted)' }}>{cnt}</span>
                   </div>
                 ))}
             </div>
@@ -192,25 +192,23 @@ export function LabelManager() {
         </div>
       )}
 
-      {/* Sync status per source */}
+      {/* Sync status */}
       {!syncing && !syncDone && Object.keys(syncLogs).length > 0 && (
-        <div className="bg-gray-900 rounded-lg p-3 mb-4">
-          <p className="text-xs text-gray-400 mb-2">Last sync</p>
-          <div className="space-y-1">
+        <div className="cs-card-surface rounded-lg p-3 mb-4">
+          <p className="text-xs font-display uppercase tracking-wider mb-2" style={{ color: 'var(--cs-text-muted)' }}>Last sync</p>
+          <div className="space-y-1.5">
             {ALL_SOURCES.map((src) => {
               const log = syncLogs[src];
               return (
-                <div key={src} className="flex items-center justify-between text-xs">
-                  <span className="text-gray-300">{SOURCE_LABELS[src] || src}</span>
+                <div key={src} className="flex items-center justify-between text-xs font-display">
+                  <span style={{ color: 'var(--cs-text-secondary)' }}>{SOURCE_LABELS[src] || src}</span>
                   {log ? (
-                    <span className={isStale(log.last_synced_at) ? 'text-yellow-400' : 'text-gray-500'}>
-                      {timeAgo(log.last_synced_at)}
-                      {' '}&middot;{' '}
-                      {log.total_labels} labels
+                    <span className="font-mono" style={{ color: isStale(log.last_synced_at) ? 'var(--cs-yellow)' : 'var(--cs-text-muted)' }}>
+                      {timeAgo(log.last_synced_at)} &middot; {log.total_labels} labels
                       {isStale(log.last_synced_at) && ' (stale)'}
                     </span>
                   ) : (
-                    <span className="text-yellow-400">never synced</span>
+                    <span className="font-mono" style={{ color: 'var(--cs-yellow)' }}>never synced</span>
                   )}
                 </div>
               );
@@ -224,68 +222,65 @@ export function LabelManager() {
         <button
           onClick={handleSync}
           disabled={syncing}
-          className={`text-sm px-4 py-1.5 rounded text-white disabled:opacity-50 ${
-            hasStale || neverSynced
-              ? 'bg-indigo-700 hover:bg-indigo-600'
-              : 'bg-gray-700 hover:bg-gray-600'
-          }`}
+          className={hasStale || neverSynced ? 'cs-btn-primary' : 'cs-btn-ghost'}
+          style={{ fontSize: '13px', padding: '8px 18px' }}
         >
           {syncing ? 'Syncing...' : hasStale || neverSynced ? 'Sync all sources now' : 'Force re-sync (all fresh)'}
         </button>
         {!syncing && !hasStale && !neverSynced && (
-          <span className="text-xs text-gray-500 ml-3">All sources synced within the last 7 days</span>
+          <span className="text-xs font-display ml-3" style={{ color: 'var(--cs-text-muted)' }}>All sources synced within the last 7 days</span>
         )}
       </div>
 
-      {/* Progress bar + source list */}
+      {/* Progress */}
       {(syncing || syncDone) && sources.length > 0 && (
-        <div className="mb-4 bg-gray-900 rounded-lg p-3">
-          {/* Bar */}
+        <div className="mb-4 cs-card-surface rounded-lg p-3">
           <div className="flex items-center gap-3 mb-2">
-            <div className="flex-1 bg-gray-700 rounded-full h-2.5 overflow-hidden">
+            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--cs-bg-base)' }}>
               <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  syncDone ? 'bg-green-500' : 'bg-indigo-500'
-                }`}
-                style={{ width: `${progressPct}%` }}
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${progressPct}%`,
+                  background: syncDone
+                    ? 'var(--cs-green)'
+                    : 'linear-gradient(90deg, var(--cs-accent), var(--cs-accent-bright))',
+                }}
               />
             </div>
-            <span className="text-xs text-gray-400 w-10 text-right">
+            <span className="text-xs font-mono w-10 text-right" style={{ color: 'var(--cs-text-muted)' }}>
               {progressPct}%
             </span>
           </div>
 
-          {/* Current source */}
           {syncing && currentSource && (
-            <p className="text-xs text-indigo-400 mb-2 animate-pulse">
+            <p className="text-xs font-display mb-2" style={{ color: 'var(--cs-accent)' }}>
+              <span className="cs-live-dot inline-block mr-1" style={{ width: 6, height: 6 }} />
               Importing {SOURCE_LABELS[currentSource.name] || currentSource.name}...
               {currentSource.prev && (
-                <span className="text-gray-500 ml-1">
+                <span className="font-mono ml-1" style={{ color: 'var(--cs-text-muted)' }}>
                   (last: {timeAgo(currentSource.prev.last_synced_at)}, {currentSource.prev.total_labels} labels)
                 </span>
               )}
             </p>
           )}
 
-          {/* Source list */}
           <div className="space-y-1">
             {sources.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
+              <div key={i} className="flex items-center gap-2 text-xs font-display">
                 <span className="w-4 text-center">
-                  {s.status === 'done' && <span className="text-green-400">+</span>}
-                  {s.status === 'running' && <span className="text-indigo-400 animate-pulse">~</span>}
-                  {s.status === 'pending' && <span className="text-gray-600">-</span>}
-                  {s.status === 'error' && <span className="text-red-400">!</span>}
+                  {s.status === 'done' && <span style={{ color: 'var(--cs-green)' }}>+</span>}
+                  {s.status === 'running' && <span className="cs-live-dot inline-block" style={{ width: 6, height: 6 }} />}
+                  {s.status === 'pending' && <span style={{ color: 'var(--cs-text-dim)' }}>-</span>}
+                  {s.status === 'error' && <span style={{ color: 'var(--cs-red)' }}>!</span>}
                 </span>
-                <span className={
-                  s.status === 'done' ? 'text-gray-300' :
-                  s.status === 'running' ? 'text-indigo-300' :
-                  'text-gray-600'
-                }>
+                <span style={{
+                  color: s.status === 'done' ? 'var(--cs-text-secondary)' :
+                    s.status === 'running' ? 'var(--cs-accent)' : 'var(--cs-text-dim)'
+                }}>
                   {SOURCE_LABELS[s.name] || s.name || `Source ${i + 1}`}
                 </span>
                 {s.status === 'done' && s.count !== undefined && (
-                  <span className={s.count > 0 ? 'text-green-400' : 'text-gray-500'}>
+                  <span className="font-mono" style={{ color: s.count > 0 ? 'var(--cs-green)' : 'var(--cs-text-muted)' }}>
                     {s.count > 0 ? `+${s.count}` : '0 new'}
                   </span>
                 )}
@@ -293,16 +288,14 @@ export function LabelManager() {
             ))}
           </div>
 
-          {/* Summary */}
           {syncDone && (
-            <p className="text-sm text-green-400 mt-2 pt-2 border-t border-gray-700">
-              Sync complete — {totalNew} new label{totalNew !== 1 ? 's' : ''} added
+            <p className="text-sm font-display mt-2 pt-2" style={{ color: 'var(--cs-green)', borderTop: '1px solid var(--cs-border)' }}>
+              Sync complete &mdash; {totalNew} new label{totalNew !== 1 ? 's' : ''} added
             </p>
           )}
         </div>
       )}
 
-      {/* Batch label form */}
       <BatchLabelForm />
     </div>
   );

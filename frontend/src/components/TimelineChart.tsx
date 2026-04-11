@@ -55,7 +55,6 @@ export function TimelineChart({ transactions, chain, onTimeRangeChange }: Timeli
       buckets.set(bucket, existing);
     }
 
-    // Sort by date
     const sorted = Array.from(buckets.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, data]) => ({
@@ -67,7 +66,6 @@ export function TimelineChart({ transactions, chain, onTimeRangeChange }: Timeli
         maxTs: data.maxTs,
       }));
 
-    // Compute cumulative balance
     let cumulative = 0;
     return sorted.map(d => {
       cumulative += d.volume;
@@ -79,16 +77,19 @@ export function TimelineChart({ transactions, chain, onTimeRangeChange }: Timeli
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-medium text-gray-300">Transaction Volume</h4>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-xs font-semibold font-display uppercase tracking-wider" style={{ color: 'var(--cs-text-muted)' }}>Transaction Volume</h4>
         <div className="flex gap-1">
           {(['day', 'week', 'month'] as Granularity[]).map((g) => (
             <button
               key={g}
               onClick={() => setGranularity(g)}
-              className={`text-xs px-2 py-0.5 rounded ${
-                granularity === g ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400'
-              }`}
+              className="text-xs px-2.5 py-1 rounded-md font-display transition-all"
+              style={
+                granularity === g
+                  ? { background: 'var(--cs-accent)', color: 'var(--cs-bg-deep)', fontWeight: 600 }
+                  : { background: 'var(--cs-bg-surface)', color: 'var(--cs-text-muted)' }
+              }
             >
               {g}
             </button>
@@ -98,23 +99,23 @@ export function TimelineChart({ transactions, chain, onTimeRangeChange }: Timeli
 
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3a" />
+          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#4a5568' }} />
           <YAxis
             yAxisId="left"
-            tick={{ fontSize: 10, fill: '#9ca3af' }}
-            label={{ value: token, angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#9ca3af' } }}
+            tick={{ fontSize: 10, fill: '#4a5568' }}
+            label={{ value: token, angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#4a5568' } }}
           />
           <YAxis
             yAxisId="right"
             orientation="right"
-            tick={{ fontSize: 10, fill: '#9ca3af' }}
-            label={{ value: 'USD', angle: 90, position: 'insideRight', style: { fontSize: 10, fill: '#9ca3af' } }}
+            tick={{ fontSize: 10, fill: '#4a5568' }}
+            label={{ value: 'USD', angle: 90, position: 'insideRight', style: { fontSize: 10, fill: '#4a5568' } }}
           />
           <Tooltip
-            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
-            labelStyle={{ color: '#e5e7eb' }}
-            itemStyle={{ color: '#e5e7eb' }}
+            contentStyle={{ backgroundColor: '#0f1420', border: '1px solid #1e2a3a', borderRadius: '8px', fontFamily: 'var(--font-mono)' }}
+            labelStyle={{ color: '#e8ecf4' }}
+            itemStyle={{ color: '#e8ecf4' }}
             formatter={(value: number, name: string) => {
               if (name === 'volume') return [`${value} ${token}`, 'Volume'];
               if (name === 'cumulative') return [`${value} ${token}`, 'Cumulative'];
@@ -122,16 +123,16 @@ export function TimelineChart({ transactions, chain, onTimeRangeChange }: Timeli
               return [value, name];
             }}
           />
-          <Bar yAxisId="left" dataKey="volume" fill="#3b82f6" opacity={0.7} />
+          <Bar yAxisId="left" dataKey="volume" fill="#00d4aa" opacity={0.6} radius={[2, 2, 0, 0]} />
           {chartData.some(d => d.volumeUsd > 0) && (
-            <Bar yAxisId="right" dataKey="volumeUsd" fill="#8b5cf6" opacity={0.4} />
+            <Bar yAxisId="right" dataKey="volumeUsd" fill="#a78bfa" opacity={0.3} radius={[2, 2, 0, 0]} />
           )}
-          <Line yAxisId="left" dataKey="cumulative" stroke="#22c55e" dot={false} strokeWidth={2} />
+          <Line yAxisId="left" dataKey="cumulative" stroke="#00d68f" dot={false} strokeWidth={2} />
           <Brush
             dataKey="date"
             height={20}
-            stroke="#4b5563"
-            fill="#1f2937"
+            stroke="#1e2a3a"
+            fill="#0a0e17"
             onChange={(range) => {
               if (onTimeRangeChange && range.startIndex !== undefined && range.endIndex !== undefined) {
                 const start = chartData[range.startIndex]?.minTs;

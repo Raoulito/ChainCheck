@@ -28,13 +28,16 @@ export function TxDetail({ tx, chain, onClose, onAddressClick }: TxDetailProps) 
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full max-w-lg bg-gray-900 border-l border-gray-700 shadow-2xl z-50 overflow-y-auto">
+    <div className="fixed inset-y-0 right-0 w-full max-w-lg z-50 overflow-y-auto" style={{ background: 'var(--cs-bg-base)', borderLeft: '1px solid var(--cs-border)', boxShadow: '-20px 0 60px rgba(0,0,0,0.5)' }}>
       {/* Header */}
-      <div className="sticky top-0 bg-gray-900 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Transaction Detail</h2>
+      <div className="sticky top-0 px-6 py-4 flex items-center justify-between" style={{ background: 'var(--cs-bg-base)', borderBottom: '1px solid var(--cs-border)' }}>
+        <h2 className="text-lg font-semibold font-display" style={{ color: 'var(--cs-text-primary)' }}>Transaction Detail</h2>
         <button
           onClick={onClose}
-          className="text-gray-400 hover:text-white text-2xl leading-none"
+          className="text-2xl leading-none transition-colors"
+          style={{ color: 'var(--cs-text-muted)' }}
+          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--cs-text-primary)'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--cs-text-muted)'}
         >
           &times;
         </button>
@@ -43,13 +46,10 @@ export function TxDetail({ tx, chain, onClose, onAddressClick }: TxDetailProps) 
       <div className="px-6 py-4 space-y-6">
         {/* Tx Hash */}
         <div>
-          <Label>Tx Hash</Label>
+          <DetailLabel>Tx Hash</DetailLabel>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-gray-300 break-all">{tx.tx_hash}</span>
-            <button
-              onClick={handleCopy}
-              className="shrink-0 text-xs text-blue-400 hover:text-blue-300"
-            >
+            <span className="font-mono text-xs break-all" style={{ color: 'var(--cs-text-secondary)' }}>{tx.tx_hash}</span>
+            <button onClick={handleCopy} className="shrink-0 text-xs font-display" style={{ color: 'var(--cs-accent)' }}>
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
@@ -57,7 +57,8 @@ export function TxDetail({ tx, chain, onClose, onAddressClick }: TxDetailProps) 
             href={explorerUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block"
+            className="text-xs mt-1 inline-block font-display"
+            style={{ color: 'var(--cs-accent)' }}
           >
             Open in Explorer &rarr;
           </a>
@@ -71,26 +72,29 @@ export function TxDetail({ tx, chain, onClose, onAddressClick }: TxDetailProps) 
             <UnconfirmedTag confirmations={tx.confirmations} chain={chain} />
           )}
           {tx.finalized && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-900/50 text-green-400">
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold font-display"
+              style={{ background: 'var(--cs-green-dim)', color: 'var(--cs-green)', border: '1px solid var(--cs-green)' }}
+            >
               Finalized
             </span>
           )}
-          <span className="text-xs text-gray-500">
+          <span className="text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
             Block #{tx.block.toLocaleString()}
           </span>
         </div>
 
         {/* Timestamp */}
         <div>
-          <Label>Time</Label>
-          <p className="text-gray-300 text-sm">{formatTimestamp(tx.timestamp)}</p>
+          <DetailLabel>Time</DetailLabel>
+          <p className="text-sm font-mono" style={{ color: 'var(--cs-text-secondary)' }}>{formatTimestamp(tx.timestamp)}</p>
         </div>
 
-        {/* Method (ETH) */}
+        {/* Method */}
         {tx.method_name && (
           <div>
-            <Label>Function</Label>
-            <p className="text-yellow-300 font-mono text-sm">{tx.method_name}</p>
+            <DetailLabel>Function</DetailLabel>
+            <p className="font-mono text-sm" style={{ color: 'var(--cs-yellow)' }}>{tx.method_name}</p>
           </div>
         )}
 
@@ -103,12 +107,12 @@ export function TxDetail({ tx, chain, onClose, onAddressClick }: TxDetailProps) 
 
         {/* Value + USD */}
         <div>
-          <Label>Value</Label>
-          <p className="text-white text-lg font-semibold">
+          <DetailLabel>Value</DetailLabel>
+          <p className="text-lg font-semibold font-mono" style={{ color: 'var(--cs-text-primary)' }}>
             {formatValue(tx.value_human, tx.token)}
           </p>
           {tx.value_usd_at_time && (
-            <p className="text-gray-400 text-sm">
+            <p className="text-sm font-mono" style={{ color: 'var(--cs-text-muted)' }}>
               {formatUsd(tx.value_usd_at_time)} at time of transaction
             </p>
           )}
@@ -117,8 +121,8 @@ export function TxDetail({ tx, chain, onClose, onAddressClick }: TxDetailProps) 
         {/* Fee */}
         {tx.fee && tx.fee !== '0' && (
           <div>
-            <Label>Fee</Label>
-            <p className="text-gray-300 text-sm font-mono">
+            <DetailLabel>Fee</DetailLabel>
+            <p className="text-sm font-mono" style={{ color: 'var(--cs-text-secondary)' }}>
               {chain === 'eth'
                 ? `${(Number(BigInt(tx.fee)) / 1e18).toFixed(8)} ETH`
                 : `${(Number(BigInt(tx.fee)) / 1e8).toFixed(8)} BTC`}
@@ -129,11 +133,11 @@ export function TxDetail({ tx, chain, onClose, onAddressClick }: TxDetailProps) 
         {/* Confirmations */}
         {tx.confirmations !== null && (
           <div>
-            <Label>Confirmations</Label>
-            <p className="text-gray-300 text-sm">
+            <DetailLabel>Confirmations</DetailLabel>
+            <p className="text-sm font-mono" style={{ color: 'var(--cs-text-secondary)' }}>
               {tx.confirmations.toLocaleString()}
               {' '}
-              <span className="text-gray-500">
+              <span style={{ color: 'var(--cs-text-muted)' }}>
                 (finality threshold: {chain === 'btc' ? 6 : 64})
               </span>
             </p>
@@ -153,50 +157,51 @@ function BtcLayout({
 }) {
   return (
     <div>
-      <Label>Inputs &rarr; Outputs</Label>
+      <DetailLabel>Inputs &rarr; Outputs</DetailLabel>
       <div className="grid grid-cols-2 gap-4 mt-2">
-        {/* Inputs */}
         <div className="space-y-1">
-          <p className="text-xs text-gray-500 uppercase">Inputs</p>
+          <p className="text-xs uppercase font-display" style={{ color: 'var(--cs-text-muted)' }}>Inputs</p>
           {tx.inputs?.map((inp, i) => (
-            <div key={i} className="bg-gray-800 rounded p-2">
+            <div key={i} className="cs-card-surface p-2">
               <button
                 onClick={() => inp.address && onAddressClick('btc', inp.address)}
-                className="font-mono text-xs text-blue-400 hover:text-blue-300 break-all"
+                className="font-mono text-xs break-all hover:underline"
+                style={{ color: 'var(--cs-accent)' }}
               >
                 {truncateAddress(inp.address || '???')}
               </button>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-xs font-mono mt-0.5" style={{ color: 'var(--cs-text-muted)' }}>
                 {(Number(inp.value) / 1e8).toFixed(8)} BTC
               </p>
             </div>
           ))}
         </div>
 
-        {/* Outputs */}
         <div className="space-y-1">
-          <p className="text-xs text-gray-500 uppercase">Outputs</p>
+          <p className="text-xs uppercase font-display" style={{ color: 'var(--cs-text-muted)' }}>Outputs</p>
           {tx.outputs?.map((out, i) => {
             const isChange = tx.change_output?.output_index === i;
             return (
               <div
                 key={i}
-                className={`bg-gray-800 rounded p-2 ${isChange ? 'border border-yellow-600/50' : ''}`}
+                className="cs-card-surface p-2"
+                style={isChange ? { borderColor: 'var(--cs-yellow)' } : undefined}
               >
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => out.address && onAddressClick('btc', out.address)}
-                    className="font-mono text-xs text-blue-400 hover:text-blue-300 break-all"
+                    className="font-mono text-xs break-all hover:underline"
+                    style={{ color: 'var(--cs-accent)' }}
                   >
                     {truncateAddress(out.address || '???')}
                   </button>
                   {isChange && (
-                    <span className="text-[10px] bg-yellow-900/60 text-yellow-400 px-1 rounded">
+                    <span className="text-xs font-display px-1 rounded" style={{ background: 'var(--cs-yellow-dim)', color: 'var(--cs-yellow)', fontSize: '10px' }}>
                       CHANGE ({tx.change_output!.confidence})
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs font-mono mt-0.5" style={{ color: 'var(--cs-text-muted)' }}>
                   {(Number(out.value) / 1e8).toFixed(8)} BTC
                 </p>
               </div>
@@ -205,18 +210,17 @@ function BtcLayout({
         </div>
       </div>
 
-      {/* Change detection reasoning */}
       {tx.change_output && (
-        <div className="mt-3 bg-yellow-900/20 border border-yellow-800/40 rounded p-3">
-          <p className="text-xs text-yellow-400 font-medium mb-1">
+        <div className="mt-3 rounded-lg p-3" style={{ background: 'var(--cs-yellow-dim)', border: '1px solid var(--cs-yellow)' }}>
+          <p className="text-xs font-semibold font-display mb-1" style={{ color: 'var(--cs-yellow)' }}>
             Change Detection ({tx.change_output.confidence} confidence)
           </p>
-          <ul className="text-xs text-yellow-300/80 space-y-0.5">
+          <ul className="text-xs space-y-0.5" style={{ color: 'var(--cs-yellow)', opacity: 0.8 }}>
             {tx.change_output.reasons.map((r, i) => (
               <li key={i}>&bull; {r}</li>
             ))}
           </ul>
-          <p className="text-[10px] text-gray-500 mt-1">
+          <p className="mt-1 font-mono" style={{ color: 'var(--cs-text-muted)', fontSize: '10px' }}>
             Heuristics: {tx.change_output.heuristics_used.join(', ')}
           </p>
         </div>
@@ -236,47 +240,46 @@ function EthLayout({
 }) {
   return (
     <div className="space-y-3">
-      {/* From */}
       <div>
-        <Label>From</Label>
+        <DetailLabel>From</DetailLabel>
         {tx.from_address ? (
           <button
             onClick={() => onAddressClick(chain, tx.from_address!)}
-            className="font-mono text-sm text-blue-400 hover:text-blue-300 break-all"
+            className="font-mono text-sm break-all hover:underline"
+            style={{ color: 'var(--cs-accent)' }}
           >
             {tx.from_address}
           </button>
         ) : (
-          <span className="text-gray-500">—</span>
+          <span style={{ color: 'var(--cs-text-muted)' }}>&mdash;</span>
         )}
       </div>
 
-      {/* To */}
       <div>
-        <Label>To</Label>
+        <DetailLabel>To</DetailLabel>
         {tx.to_address ? (
           <button
             onClick={() => onAddressClick(chain, tx.to_address!)}
-            className="font-mono text-sm text-blue-400 hover:text-blue-300 break-all"
+            className="font-mono text-sm break-all hover:underline"
+            style={{ color: 'var(--cs-accent)' }}
           >
             {tx.to_address}
           </button>
         ) : (
-          <span className="text-gray-500">—</span>
+          <span style={{ color: 'var(--cs-text-muted)' }}>&mdash;</span>
         )}
       </div>
 
-      {/* Type */}
       <div>
-        <Label>Type</Label>
-        <p className="text-gray-300 text-sm capitalize">{tx.tx_type}</p>
+        <DetailLabel>Type</DetailLabel>
+        <p className="text-sm capitalize font-display" style={{ color: 'var(--cs-text-secondary)' }}>{tx.tx_type}</p>
       </div>
     </div>
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
+function DetailLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-gray-500 text-xs uppercase tracking-wide mb-0.5">{children}</p>
+    <p className="text-xs uppercase tracking-widest font-display mb-0.5" style={{ color: 'var(--cs-text-muted)' }}>{children}</p>
   );
 }

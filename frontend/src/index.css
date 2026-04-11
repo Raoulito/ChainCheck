@@ -1,1 +1,272 @@
 @import "tailwindcss";
+
+/* ─── ChainScope: Cyber-Forensic Terminal Theme ─── */
+
+:root {
+  /* Base */
+  --cs-bg-deep: #060911;
+  --cs-bg-base: #0a0e17;
+  --cs-bg-raised: #0f1420;
+  --cs-bg-surface: #151b2b;
+  --cs-bg-hover: #1a2236;
+
+  /* Borders */
+  --cs-border: #1e2a3a;
+  --cs-border-focus: #00d4aa44;
+  --cs-border-glow: #00d4aa;
+
+  /* Text */
+  --cs-text-primary: #e8ecf4;
+  --cs-text-secondary: #8892a6;
+  --cs-text-muted: #4a5568;
+  --cs-text-dim: #2d3748;
+
+  /* Accent - Cyan/Teal */
+  --cs-accent: #00d4aa;
+  --cs-accent-dim: #00d4aa33;
+  --cs-accent-bright: #00ffc8;
+
+  /* Semantic */
+  --cs-red: #ff3b5c;
+  --cs-red-dim: #ff3b5c22;
+  --cs-orange: #ff8c42;
+  --cs-orange-dim: #ff8c4222;
+  --cs-yellow: #ffd23f;
+  --cs-yellow-dim: #ffd23f22;
+  --cs-green: #00d68f;
+  --cs-green-dim: #00d68f22;
+  --cs-blue: #3b82f6;
+  --cs-blue-dim: #3b82f622;
+  --cs-purple: #a78bfa;
+  --cs-purple-dim: #a78bfa22;
+
+  /* Typography */
+  --font-display: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ─── Base ─── */
+
+body {
+  font-family: var(--font-display);
+  background: var(--cs-bg-deep);
+  color: var(--cs-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dot-grid atmosphere */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, var(--cs-border) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.3;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Scrollbar ─── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--cs-bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--cs-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cs-text-muted);
+}
+
+/* ─── Utility classes ─── */
+
+.cs-card {
+  background: var(--cs-bg-raised);
+  border: 1px solid var(--cs-border);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.cs-card-surface {
+  background: var(--cs-bg-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: 8px;
+}
+
+.cs-input {
+  background: var(--cs-bg-base);
+  border: 1px solid var(--cs-border);
+  border-radius: 8px;
+  color: var(--cs-text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 10px 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.cs-input:focus {
+  outline: none;
+  border-color: var(--cs-accent);
+  box-shadow: 0 0 0 3px var(--cs-accent-dim), 0 0 20px var(--cs-accent-dim);
+}
+.cs-input::placeholder {
+  color: var(--cs-text-muted);
+}
+.cs-input:disabled {
+  opacity: 0.5;
+}
+
+.cs-select {
+  background: var(--cs-bg-base);
+  border: 1px solid var(--cs-border);
+  border-radius: 8px;
+  color: var(--cs-text-secondary);
+  font-family: var(--font-display);
+  font-size: 13px;
+  padding: 8px 12px;
+  transition: border-color 0.2s;
+}
+.cs-select:focus {
+  outline: none;
+  border-color: var(--cs-accent);
+}
+
+.cs-btn-primary {
+  background: linear-gradient(135deg, var(--cs-accent), #00b894);
+  color: var(--cs-bg-deep);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 24px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+  letter-spacing: 0.02em;
+}
+.cs-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px var(--cs-accent-dim), 0 0 40px var(--cs-accent-dim);
+}
+.cs-btn-primary:active {
+  transform: translateY(0);
+}
+.cs-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.cs-btn-ghost {
+  background: transparent;
+  border: 1px solid var(--cs-border);
+  border-radius: 8px;
+  color: var(--cs-text-secondary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.cs-btn-ghost:hover {
+  background: var(--cs-bg-hover);
+  color: var(--cs-text-primary);
+  border-color: var(--cs-text-muted);
+}
+.cs-btn-ghost:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.cs-btn-danger {
+  background: var(--cs-red-dim);
+  border: 1px solid var(--cs-red);
+  border-radius: 8px;
+  color: var(--cs-red);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 24px;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.2s;
+}
+.cs-btn-danger:hover {
+  background: #ff3b5c33;
+  box-shadow: 0 0 20px var(--cs-red-dim);
+}
+
+/* Glow pulse for live indicators */
+@keyframes cs-pulse-glow {
+  0%, 100% { box-shadow: 0 0 4px var(--cs-accent); opacity: 1; }
+  50% { box-shadow: 0 0 12px var(--cs-accent-bright); opacity: 0.7; }
+}
+
+.cs-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cs-accent);
+  animation: cs-pulse-glow 1.5s ease-in-out infinite;
+}
+
+/* Stagger animation */
+@keyframes cs-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cs-fade-up {
+  animation: cs-fade-up 0.4s ease-out forwards;
+}
+
+/* Skeleton shimmer */
+@keyframes cs-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.cs-skeleton {
+  background: linear-gradient(90deg, var(--cs-bg-surface) 25%, var(--cs-bg-hover) 50%, var(--cs-bg-surface) 75%);
+  background-size: 200% 100%;
+  animation: cs-shimmer 1.8s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Font classes */
+.font-display { font-family: var(--font-display); }
+.font-mono { font-family: var(--font-mono); }
+
+/* Table hover rows */
+.cs-table-row {
+  transition: background 0.15s;
+}
+.cs-table-row:hover {
+  background: var(--cs-bg-hover);
+}
+
+/* Progress bar glow */
+.cs-progress-bar {
+  position: relative;
+  overflow: hidden;
+}
+.cs-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  animation: cs-shimmer 2s ease-in-out infinite;
+}

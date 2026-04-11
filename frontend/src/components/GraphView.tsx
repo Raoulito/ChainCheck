@@ -32,10 +32,10 @@ export interface GraphHandle {
 }
 
 const RISK_COLORS: Record<string, string> = {
-  LOW: '#22c55e',
-  MEDIUM: '#eab308',
-  HIGH: '#f97316',
-  SEVERE: '#ef4444',
+  LOW: '#00d68f',
+  MEDIUM: '#ffd23f',
+  HIGH: '#ff8c42',
+  SEVERE: '#ff3b5c',
 };
 
 type LayoutType = 'dagre' | 'circular';
@@ -136,16 +136,17 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
           {
             selector: 'node',
             style: {
-              'background-color': '#4b5563',
+              'background-color': '#1a2236',
               label: 'data(displayLabel)',
               'font-size': '10px',
-              color: '#e5e7eb',
+              'font-family': 'JetBrains Mono, monospace',
+              color: '#8892a6',
               'text-valign': 'bottom',
               'text-margin-y': 6,
               width: 'data(size)',
               height: 'data(size)',
               'border-width': 2,
-              'border-color': '#6b7280',
+              'border-color': '#1e2a3a',
             },
           },
           {
@@ -158,8 +159,8 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
           {
             selector: 'node.root',
             style: {
-              'background-color': '#3b82f6',
-              'border-color': '#60a5fa',
+              'background-color': '#00d4aa33',
+              'border-color': '#00d4aa',
               'border-width': 3,
             },
           },
@@ -173,21 +174,22 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
             selector: 'edge',
             style: {
               width: 'data(thickness)',
-              'line-color': '#4b5563',
-              'target-arrow-color': '#4b5563',
+              'line-color': '#1e2a3a',
+              'target-arrow-color': '#1e2a3a',
               'target-arrow-shape': 'triangle',
               'curve-style': 'bezier',
               label: 'data(edgeLabel)',
               'font-size': '8px',
-              color: '#9ca3af',
+              'font-family': 'JetBrains Mono, monospace',
+              color: '#4a5568',
               'text-rotation': 'autorotate',
             },
           },
           {
             selector: 'edge.sanctioned',
             style: {
-              'line-color': '#ef4444',
-              'target-arrow-color': '#ef4444',
+              'line-color': '#ff3b5c',
+              'target-arrow-color': '#ff3b5c',
             },
           },
           {
@@ -517,95 +519,80 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
     }));
 
     return (
-      <div className={`bg-gray-800 border border-gray-700 rounded-lg overflow-hidden ${
+      <div className={`cs-card overflow-hidden ${
         fullscreen
           ? 'fixed inset-0 z-50 m-0 rounded-none'
           : 'mt-4'
       }`}>
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 flex-wrap gap-2">
-          <span className="text-xs text-gray-400">
+        <div className="flex items-center justify-between px-3 py-2 flex-wrap gap-2" style={{ borderBottom: '1px solid var(--cs-border)' }}>
+          <span className="text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
             {nodeCount} nodes, {edgeCount} edges
           </span>
           <div className="flex items-center gap-2 flex-wrap">
             {isComputing && (
-              <span className="text-xs text-yellow-400 animate-pulse">Computing layout...</span>
+              <span className="text-xs font-display" style={{ color: 'var(--cs-yellow)' }}>
+                <span className="cs-live-dot inline-block mr-1" style={{ width: 6, height: 6, background: 'var(--cs-yellow)' }} />
+                Computing layout...
+              </span>
             )}
 
-            {/* Layout selector */}
             <select
               value={layoutType}
               onChange={(e) => handleLayoutChange(e.target.value as LayoutType)}
-              className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1 border border-gray-600"
+              className="cs-select" style={{ padding: '4px 8px', fontSize: '11px' }}
             >
               <option value="dagre">Hierarchical</option>
               <option value="circular">Circular</option>
             </select>
 
-            <button
-              onClick={() => runLayout()}
-              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
-            >
-              Re-layout
-            </button>
-            <button
-              onClick={() => cyRef.current?.fit(undefined, 40)}
-              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
-            >
-              Fit
-            </button>
+            <button onClick={() => runLayout()} className="cs-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }}>Re-layout</button>
+            <button onClick={() => cyRef.current?.fit(undefined, 40)} className="cs-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }}>Fit</button>
             <button
               onClick={toggleLabels}
-              className={`text-xs px-2 py-1 rounded ${showLabels ? 'bg-blue-700 text-white' : 'bg-gray-700 text-gray-300'} hover:bg-gray-600`}
+              className="cs-btn-ghost"
+              style={{
+                padding: '4px 10px', fontSize: '11px',
+                ...(showLabels ? { background: 'var(--cs-accent-dim)', color: 'var(--cs-accent)', borderColor: 'var(--cs-accent)' } : {}),
+              }}
             >
               Labels
             </button>
             <button
-              onClick={() => {
-                const cy = cyRef.current;
-                if (!cy) return;
-                cy.zoom(cy.zoom() * 1.3);
-                cy.center();
-              }}
-              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
-            >
-              +
-            </button>
+              onClick={() => { const cy = cyRef.current; if (!cy) return; cy.zoom(cy.zoom() * 1.3); cy.center(); }}
+              className="cs-btn-ghost" style={{ padding: '4px 8px', fontSize: '11px' }}
+            >+</button>
             <button
-              onClick={() => {
-                const cy = cyRef.current;
-                if (!cy) return;
-                cy.zoom(cy.zoom() / 1.3);
-                cy.center();
-              }}
-              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
-            >
-              -
-            </button>
+              onClick={() => { const cy = cyRef.current; if (!cy) return; cy.zoom(cy.zoom() / 1.3); cy.center(); }}
+              className="cs-btn-ghost" style={{ padding: '4px 8px', fontSize: '11px' }}
+            >-</button>
             {hiddenNodes.size > 0 && (
               <button
                 onClick={handleShowAllNodes}
-                className="text-xs px-2 py-1 rounded bg-red-700 text-white hover:bg-red-600"
+                className="cs-btn-ghost"
+                style={{ padding: '4px 10px', fontSize: '11px', background: 'var(--cs-red-dim)', color: 'var(--cs-red)', borderColor: 'var(--cs-red)' }}
               >
                 Show hidden ({hiddenNodes.size})
               </button>
             )}
             <button
               onClick={() => setVerbose(v => !v)}
-              className={`text-xs px-2 py-1 rounded ${verbose ? 'bg-yellow-700 text-white' : 'bg-gray-700 text-gray-300'} hover:bg-gray-600`}
-            >
-              Debug
-            </button>
+              className="cs-btn-ghost"
+              style={{
+                padding: '4px 10px', fontSize: '11px',
+                ...(verbose ? { background: 'var(--cs-yellow-dim)', color: 'var(--cs-yellow)', borderColor: 'var(--cs-yellow)' } : {}),
+              }}
+            >Debug</button>
             <button
               onClick={() => {
                 setFullscreen(f => !f);
-                // Re-fit after transition
-                setTimeout(() => {
-                  cyRef.current?.resize();
-                  cyRef.current?.fit(undefined, 40);
-                }, 50);
+                setTimeout(() => { cyRef.current?.resize(); cyRef.current?.fit(undefined, 40); }, 50);
               }}
-              className={`text-xs px-2 py-1 rounded ${fullscreen ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-300'} hover:bg-gray-600`}
+              className="cs-btn-ghost"
+              style={{
+                padding: '4px 10px', fontSize: '11px',
+                ...(fullscreen ? { background: 'var(--cs-accent-dim)', color: 'var(--cs-accent)', borderColor: 'var(--cs-accent)' } : {}),
+              }}
             >
               {fullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             </button>
@@ -613,36 +600,31 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 px-3 py-1 border-b border-gray-700 text-xs text-gray-500">
-          <span><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />Root</span>
-          <span><span className="inline-block w-2 h-2 rounded-full border-2 border-green-500 mr-1" />Low risk</span>
-          <span><span className="inline-block w-2 h-2 rounded-full border-2 border-yellow-500 mr-1" />Medium</span>
-          <span><span className="inline-block w-2 h-2 rounded-full border-2 border-orange-500 mr-1" />High</span>
-          <span><span className="inline-block w-2 h-2 rounded-full border-2 border-red-500 mr-1" />Severe</span>
+        <div className="flex items-center gap-4 px-3 py-1 text-xs font-display" style={{ borderBottom: '1px solid var(--cs-border)', color: 'var(--cs-text-muted)' }}>
+          <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: '#00d4aa' }} />Root</span>
+          <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ border: '2px solid #00d68f' }} />Low</span>
+          <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ border: '2px solid #ffd23f' }} />Medium</span>
+          <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ border: '2px solid #ff8c42' }} />High</span>
+          <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ border: '2px solid #ff3b5c' }} />Severe</span>
         </div>
 
         {/* Graph container */}
         <div
           ref={containerRef}
-          className="w-full bg-gray-900"
-          style={{ height: fullscreen ? 'calc(100vh - 90px)' : '500px' }}
+          className="w-full"
+          style={{ height: fullscreen ? 'calc(100vh - 90px)' : '500px', background: 'var(--cs-bg-deep)' }}
         />
 
         {/* Debug panel */}
         {verbose && (
-          <div className="border-t border-gray-700 bg-gray-950 p-2 max-h-48 overflow-auto font-mono text-[10px] text-gray-500">
+          <div className="p-2 max-h-48 overflow-auto font-mono" style={{ borderTop: '1px solid var(--cs-border)', background: 'var(--cs-bg-base)', fontSize: '10px', color: 'var(--cs-text-muted)' }}>
             <div className="flex justify-between items-center mb-1">
-              <span className="text-gray-400 font-bold">Debug Log ({debugLog.length})</span>
-              <button
-                onClick={() => setDebugLog([])}
-                className="text-gray-600 hover:text-gray-400 text-[10px]"
-              >
-                Clear
-              </button>
+              <span className="font-bold" style={{ color: 'var(--cs-text-secondary)' }}>Debug Log ({debugLog.length})</span>
+              <button onClick={() => setDebugLog([])} style={{ color: 'var(--cs-text-dim)', fontSize: '10px' }}>Clear</button>
             </div>
-            {debugLog.length === 0 && <div className="text-gray-600">No events yet. Start a trace to see debug output.</div>}
+            {debugLog.length === 0 && <div style={{ color: 'var(--cs-text-dim)' }}>No events yet. Start a trace to see debug output.</div>}
             {debugLog.map((entry, i) => (
-              <div key={i} className={entry.includes('WARN') ? 'text-yellow-500' : entry.includes('ERR') ? 'text-red-500' : ''}>
+              <div key={i} style={{ color: entry.includes('WARN') ? 'var(--cs-yellow)' : entry.includes('ERR') ? 'var(--cs-red)' : undefined }}>
                 {entry}
               </div>
             ))}
@@ -652,49 +634,50 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         {/* Right-click context menu */}
         {ctxMenu && ctxMode === 'menu' && (
           <div
-            className="ctx-label-menu fixed z-[100] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 w-48"
-            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            className="ctx-label-menu fixed z-[100] cs-card py-1 w-48"
+            style={{ left: ctxMenu.x, top: ctxMenu.y, boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
           >
-            <p className="text-[10px] text-gray-500 font-mono px-3 py-1 truncate border-b border-gray-700">
+            <p className="font-mono px-3 py-1 truncate" style={{ fontSize: '10px', color: 'var(--cs-text-muted)', borderBottom: '1px solid var(--cs-border)' }}>
               {ctxMenu.address}
             </p>
             <button
               onClick={() => handleHideNode(ctxMenu.address)}
-              className="w-full text-left text-xs text-gray-300 hover:bg-gray-700 px-3 py-2"
+              className="w-full text-left text-xs font-display px-3 py-2 transition-colors"
+              style={{ color: 'var(--cs-text-secondary)' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--cs-bg-hover)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
               Hide node
             </button>
             <button
               onClick={handleOpenLabelForm}
-              className="w-full text-left text-xs text-gray-300 hover:bg-gray-700 px-3 py-2"
+              className="w-full text-left text-xs font-display px-3 py-2 transition-colors"
+              style={{ color: 'var(--cs-text-secondary)' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--cs-bg-hover)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
               Label node
             </button>
           </div>
         )}
 
-        {/* Label editing form (opened from context menu) */}
+        {/* Label editing form */}
         {ctxMenu && ctxMode === 'label' && (
           <div
-            className="ctx-label-menu fixed z-[100] bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 w-72"
-            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            className="ctx-label-menu fixed z-[100] cs-card p-3 w-72"
+            style={{ left: ctxMenu.x, top: ctxMenu.y, boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-white">
+              <span className="text-xs font-semibold font-display" style={{ color: 'var(--cs-text-primary)' }}>
                 {ctxExisting ? 'Edit Label' : 'Add Label'}
               </span>
-              <button
-                onClick={() => setCtxMenu(null)}
-                className="text-gray-400 hover:text-white text-xs"
-              >
-                X
-              </button>
+              <button onClick={() => setCtxMenu(null)} className="text-xs" style={{ color: 'var(--cs-text-muted)' }}>X</button>
             </div>
-            <p className="text-[10px] text-gray-500 font-mono mb-2 truncate">
+            <p className="font-mono mb-2 truncate" style={{ fontSize: '10px', color: 'var(--cs-text-muted)' }}>
               {ctxMenu.address}
             </p>
             {ctxExisting && (
-              <p className="text-[10px] text-blue-400 mb-2">
+              <p className="mb-2" style={{ fontSize: '10px', color: 'var(--cs-accent)' }}>
                 Current: {ctxExisting}
               </p>
             )}
@@ -705,23 +688,14 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
               onChange={(e) => setCtxEntityName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleCtxSave(); }}
               autoFocus
-              className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white mb-2 focus:outline-none focus:border-blue-500"
+              className="cs-input w-full mb-2"
+              style={{ padding: '6px 10px', fontSize: '12px' }}
             />
             <div className="flex gap-2 mb-2">
-              <select
-                value={ctxEntityType}
-                onChange={(e) => setCtxEntityType(e.target.value)}
-                className="flex-1 bg-gray-900 border border-gray-600 rounded px-1 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
-              >
-                {ENTITY_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
+              <select value={ctxEntityType} onChange={(e) => setCtxEntityType(e.target.value)} className="cs-select flex-1" style={{ padding: '4px 8px', fontSize: '11px' }}>
+                {ENTITY_TYPES.map((t) => (<option key={t} value={t}>{t}</option>))}
               </select>
-              <select
-                value={ctxConfidence}
-                onChange={(e) => setCtxConfidence(e.target.value)}
-                className="bg-gray-900 border border-gray-600 rounded px-1 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
-              >
+              <select value={ctxConfidence} onChange={(e) => setCtxConfidence(e.target.value)} className="cs-select" style={{ padding: '4px 8px', fontSize: '11px' }}>
                 <option value="low">low</option>
                 <option value="medium">medium</option>
                 <option value="high">high</option>
@@ -731,12 +705,13 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
               <button
                 onClick={handleCtxSave}
                 disabled={ctxSaving || !ctxEntityName.trim()}
-                className="text-xs px-3 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50"
+                className="cs-btn-primary"
+                style={{ padding: '4px 14px', fontSize: '11px' }}
               >
                 {ctxSaving ? '...' : 'Save'}
               </button>
               {ctxStatus && (
-                <span className={`text-xs ${ctxStatus === 'Saved' ? 'text-green-400' : 'text-red-400'}`}>
+                <span className="text-xs font-display" style={{ color: ctxStatus === 'Saved' ? 'var(--cs-green)' : 'var(--cs-red)' }}>
                   {ctxStatus}
                 </span>
               )}

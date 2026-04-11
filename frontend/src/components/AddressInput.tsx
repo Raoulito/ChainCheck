@@ -43,9 +43,7 @@ export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
       return;
     }
 
-    // For EVM addresses, use the selected chain
     const chain = isEvmAddress(trimmed) ? evmChain : detectedChain;
-
     setError(null);
     onSubmit(chain, trimmed);
   };
@@ -56,22 +54,34 @@ export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => handleInputChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Enter BTC or EVM address..."
-          className="flex-1 px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-          disabled={isLoading}
-        />
+      <div className="flex gap-3">
+        <div className="flex-1 relative">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => handleInputChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Enter BTC or EVM address..."
+            className="cs-input w-full"
+            style={{ paddingRight: '40px' }}
+            disabled={isLoading}
+          />
+          {input && (
+            <button
+              onClick={() => { setInput(''); setError(null); setShowChainSelect(false); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs"
+              style={{ color: 'var(--cs-text-muted)' }}
+            >
+              &times;
+            </button>
+          )}
+        </div>
 
         {showChainSelect && (
           <select
             value={evmChain}
             onChange={(e) => setEvmChain(e.target.value as Chain)}
-            className="px-3 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="cs-select"
             disabled={isLoading}
           >
             {EVM_CHAINS.map((c) => (
@@ -83,22 +93,22 @@ export function AddressInput({ onSubmit, isLoading }: AddressInputProps) {
         <button
           onClick={handleSubmit}
           disabled={isLoading}
-          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+          className={isLoading ? 'cs-btn-ghost' : 'cs-btn-primary'}
+          style={{ minWidth: '100px' }}
         >
           {isLoading ? (
-            <>
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
+            <span className="flex items-center gap-2 justify-center">
+              <span className="cs-live-dot" style={{ width: 6, height: 6 }} />
               Loading
-            </>
+            </span>
           ) : (
             'Lookup'
           )}
         </button>
       </div>
-      {error && <p className="mt-2 text-red-400 text-sm">{error}</p>}
+      {error && (
+        <p className="mt-2 text-sm font-display" style={{ color: 'var(--cs-red)' }}>{error}</p>
+      )}
     </div>
   );
 }

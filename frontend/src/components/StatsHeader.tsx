@@ -27,6 +27,7 @@ export function StatsHeader({ stats, chain }: StatsHeaderProps) {
         label="Balance"
         value={`${parseFloat(balanceHuman.toFixed(6))} ${token}`}
         sub={unconfirmed !== 0n ? `${parseFloat(unconfirmedHuman.toFixed(6))} ${token} unconfirmed` : undefined}
+        accent
       />
       <StatCard
         label="Total Received"
@@ -49,12 +50,12 @@ export function StatsHeader({ stats, chain }: StatsHeaderProps) {
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
-    <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-      <p className="text-gray-400 text-xs uppercase tracking-wide">{label}</p>
-      <p className="text-white text-lg font-semibold mt-1">{value}</p>
-      {sub && <p className="text-gray-500 text-xs mt-1">{sub}</p>}
+    <div className="cs-card p-4" style={accent ? { borderColor: 'var(--cs-accent)', borderWidth: '1px' } : undefined}>
+      <p className="text-xs uppercase tracking-widest font-display mb-2" style={{ color: 'var(--cs-text-muted)' }}>{label}</p>
+      <p className="text-lg font-semibold font-mono" style={{ color: accent ? 'var(--cs-accent)' : 'var(--cs-text-primary)' }}>{value}</p>
+      {sub && <p className="text-xs mt-1 font-mono" style={{ color: 'var(--cs-text-muted)' }}>{sub}</p>}
     </div>
   );
 }

@@ -27,25 +27,31 @@ export function AnalysisPanel({ transactions, address, chain, onAddressClick }: 
   if (transactions.length === 0) return null;
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mt-4">
+    <div className="cs-card p-4 mt-4">
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b border-gray-700 pb-2">
+      <div className="flex gap-1 mb-4 pb-2" style={{ borderBottom: '1px solid var(--cs-border)' }}>
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`text-xs px-3 py-1.5 rounded-t transition-colors ${
+            className="text-xs px-4 py-2 rounded-t-lg font-display font-medium transition-all"
+            style={
               activeTab === tab.id
-                ? 'bg-gray-700 text-gray-100'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
+                ? { background: 'var(--cs-bg-surface)', color: 'var(--cs-accent)', borderBottom: '2px solid var(--cs-accent)' }
+                : { color: 'var(--cs-text-muted)' }
+            }
+            onMouseEnter={(e) => {
+              if (activeTab !== tab.id) e.currentTarget.style.color = 'var(--cs-text-secondary)';
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== tab.id) e.currentTarget.style.color = 'var(--cs-text-muted)';
+            }}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
       {activeTab === 'timeline' && (
         <TimelineChart transactions={transactions} chain={chain} />
       )}

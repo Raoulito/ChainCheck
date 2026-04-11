@@ -23,7 +23,6 @@ export function AddLabelForm({ address, chain }: AddLabelFormProps) {
   const [confidence, setConfidence] = useState('medium');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
-  // Fetch existing label when address changes
   useEffect(() => {
     let cancelled = false;
     setExisting(null);
@@ -55,31 +54,31 @@ export function AddLabelForm({ address, chain }: AddLabelFormProps) {
 
   return (
     <div className="inline-flex items-center gap-2">
-      {/* Existing label display */}
       {existing && (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-900/50 text-blue-300 border border-blue-700">
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold font-display"
+          style={{ background: 'var(--cs-blue-dim)', color: 'var(--cs-blue)', border: '1px solid var(--cs-blue)' }}
+        >
           {existing.entity_name} ({existing.entity_type})
-          <span className="opacity-50 ml-1">{existing.source}</span>
+          <span style={{ opacity: 0.5 }} className="ml-1 font-mono">{existing.source}</span>
         </span>
       )}
 
-      {/* Toggle button */}
       <button
         onClick={() => { setOpen(!open); setStatus(null); }}
-        className="text-xs px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 border border-gray-600"
+        className="cs-btn-ghost"
+        style={{ padding: '2px 10px', fontSize: '11px' }}
         title={existing ? 'Edit label' : 'Add label'}
       >
         {existing ? 'Edit label' : '+ Label'}
       </button>
 
-      {/* Status message (shown inline when form is closed) */}
       {!open && status && (
-        <span className={`text-xs ${status.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+        <span className="text-xs font-display" style={{ color: status.type === 'success' ? 'var(--cs-green)' : 'var(--cs-red)' }}>
           {status.msg}
         </span>
       )}
 
-      {/* Inline form */}
       {open && (
         <div className="flex items-center gap-2 ml-1">
           <input
@@ -87,12 +86,14 @@ export function AddLabelForm({ address, chain }: AddLabelFormProps) {
             placeholder="Entity name"
             value={entityName}
             onChange={(e) => setEntityName(e.target.value)}
-            className="bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-xs text-white w-40 focus:outline-none focus:border-blue-500"
+            className="cs-input"
+            style={{ width: '150px', padding: '4px 8px', fontSize: '11px' }}
           />
           <select
             value={entityType}
             onChange={(e) => setEntityType(e.target.value)}
-            className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-xs text-white focus:outline-none focus:border-blue-500"
+            className="cs-select"
+            style={{ padding: '4px 8px', fontSize: '11px' }}
           >
             {ENTITY_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
@@ -101,7 +102,8 @@ export function AddLabelForm({ address, chain }: AddLabelFormProps) {
           <select
             value={confidence}
             onChange={(e) => setConfidence(e.target.value)}
-            className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-xs text-white focus:outline-none focus:border-blue-500"
+            className="cs-select"
+            style={{ padding: '4px 8px', fontSize: '11px' }}
           >
             {CONFIDENCE_LEVELS.map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -110,18 +112,20 @@ export function AddLabelForm({ address, chain }: AddLabelFormProps) {
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="text-xs px-2 py-0.5 rounded bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50"
+            className="cs-btn-primary"
+            style={{ padding: '4px 12px', fontSize: '11px' }}
           >
             {loading ? '...' : 'Save'}
           </button>
           <button
             onClick={() => setOpen(false)}
-            className="text-xs px-1 py-0.5 text-gray-400 hover:text-white"
+            className="text-xs font-display"
+            style={{ color: 'var(--cs-text-muted)' }}
           >
             Cancel
           </button>
           {status && (
-            <span className={`text-xs ${status.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+            <span className="text-xs font-display" style={{ color: status.type === 'success' ? 'var(--cs-green)' : 'var(--cs-red)' }}>
               {status.msg}
             </span>
           )}

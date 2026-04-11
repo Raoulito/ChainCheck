@@ -49,7 +49,7 @@ export function AddressHoverCard({
   const token = chain === 'btc' ? 'BTC' : 'ETH';
   const decimals = chain === 'btc' ? 8 : 18;
 
-  let balanceHuman = '—';
+  let balanceHuman = '\u2014';
   if (data?.stats) {
     const divisor = BigInt(10 ** decimals);
     const bal = BigInt(data.stats.balance);
@@ -64,9 +64,15 @@ export function AddressHoverCard({
     >
       {children}
       {show && (
-        <div className="absolute z-40 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 text-left">
+        <div
+          className="absolute z-40 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 cs-card p-3 text-left"
+          style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
+        >
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] uppercase bg-gray-700 px-1.5 py-0.5 rounded text-gray-300 font-medium">
+            <span
+              className="text-xs uppercase px-1.5 py-0.5 rounded font-display font-semibold"
+              style={{ background: 'var(--cs-bg-surface)', color: 'var(--cs-text-secondary)', fontSize: '10px' }}
+            >
               {chain}
             </span>
             <button
@@ -74,7 +80,8 @@ export function AddressHoverCard({
                 e.stopPropagation();
                 onAddressClick(chain, address);
               }}
-              className="font-mono text-xs text-blue-400 hover:text-blue-300 truncate"
+              className="font-mono text-xs truncate hover:underline"
+              style={{ color: 'var(--cs-accent)' }}
             >
               {truncateAddress(address, 8)}
             </button>
@@ -88,8 +95,8 @@ export function AddressHoverCard({
 
           {isLoading ? (
             <div className="space-y-2">
-              <div className="h-3 bg-gray-700 rounded animate-pulse w-3/4" />
-              <div className="h-3 bg-gray-700 rounded animate-pulse w-1/2" />
+              <div className="h-3 cs-skeleton w-3/4" />
+              <div className="h-3 cs-skeleton w-1/2" />
             </div>
           ) : data ? (
             <div className="space-y-1 text-xs">
@@ -105,7 +112,14 @@ export function AddressHoverCard({
           )}
 
           {/* Arrow */}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-gray-600" />
+          <div
+            className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0"
+            style={{
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              borderTop: '6px solid var(--cs-border)',
+            }}
+          />
         </div>
       )}
     </span>
@@ -115,8 +129,8 @@ export function AddressHoverCard({
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-200">{value}</span>
+      <span className="font-display" style={{ color: 'var(--cs-text-muted)' }}>{label}</span>
+      <span className="font-mono" style={{ color: 'var(--cs-text-primary)' }}>{value}</span>
     </div>
   );
 }

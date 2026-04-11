@@ -48,7 +48,6 @@ function buildTree(
   const nodeMap = new Map<string, FlowNode>();
   for (const n of nodes) nodeMap.set(n.address, n);
 
-  // Group edges by source
   const adj = new Map<string, FlowEdge[]>();
   for (const e of edges) {
     const key = direction === 'forward' ? e.from : e.to;
@@ -88,7 +87,6 @@ function formatFlowValue(value: string, token: string): string {
   const num = parseFloat(value);
   if (isNaN(num)) return `${value} ${token}`;
 
-  // Values are always in smallest unit (wei/satoshi) — convert first
   let converted = num;
   if (token === 'ETH') converted = num / 1e18;
   else if (token === 'BTC') converted = num / 1e8;
@@ -101,17 +99,17 @@ function formatFlowValue(value: string, token: string): string {
 }
 
 const RISK_COLORS: Record<string, string> = {
-  LOW: 'text-green-400',
-  MEDIUM: 'text-yellow-400',
-  HIGH: 'text-orange-400',
-  SEVERE: 'text-red-400',
+  LOW: 'var(--cs-green)',
+  MEDIUM: 'var(--cs-yellow)',
+  HIGH: 'var(--cs-orange)',
+  SEVERE: 'var(--cs-red)',
 };
 
-const ENTITY_COLORS: Record<string, string> = {
-  exchange: 'bg-blue-900/50 text-blue-300',
-  mixer: 'bg-red-900/50 text-red-300',
-  sanctioned: 'bg-red-800/70 text-red-200',
-  defi: 'bg-purple-900/50 text-purple-300',
+const ENTITY_BG: Record<string, { bg: string; color: string }> = {
+  exchange: { bg: 'var(--cs-blue-dim)', color: 'var(--cs-blue)' },
+  mixer: { bg: 'var(--cs-red-dim)', color: 'var(--cs-red)' },
+  sanctioned: { bg: 'var(--cs-red-dim)', color: 'var(--cs-red)' },
+  defi: { bg: 'var(--cs-purple-dim)', color: 'var(--cs-purple)' },
 };
 
 interface TreeNodeRowProps {
@@ -127,7 +125,6 @@ function TreeNodeRow({ node, depth, onAddressClick, minAmount, tokenFilter }: Tr
 
   const hasChildren = node.children.length > 0;
 
-  // Aggregate edge values for this node
   const totalValue = node.edges.reduce((sum, e) => {
     try { return sum + BigInt(e.value); } catch { return sum; }
   }, 0n);
@@ -136,73 +133,68 @@ function TreeNodeRow({ node, depth, onAddressClick, minAmount, tokenFilter }: Tr
     ? Math.max(...node.edges.map(e => e.timestamp))
     : 0;
 
-  // Apply filters
   if (minAmount > 0n && totalValue < minAmount && depth > 0) return null;
   if (tokenFilter && primaryToken && primaryToken !== tokenFilter && depth > 0) return null;
+
+  const entityStyle = ENTITY_BG[node.risk ?? ''] ?? { bg: 'var(--cs-bg-surface)', color: 'var(--cs-text-secondary)' };
 
   return (
     <div>
       <div
-        className="flex items-center gap-2 py-1.5 px-2 hover:bg-gray-700/50 rounded cursor-pointer group"
+        className="flex items-center gap-2 py-1.5 px-2 rounded-md cursor-pointer group transition-colors"
         style={{ paddingLeft: `${depth * 24 + 8}px` }}
         onClick={() => hasChildren && setExpanded(!expanded)}
+        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--cs-bg-hover)'}
+        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
       >
-        {/* Expand/collapse toggle */}
-        <span className="w-4 text-gray-500 text-xs flex-shrink-0">
+        <span className="w-4 text-xs flex-shrink-0" style={{ color: 'var(--cs-text-dim)' }}>
           {hasChildren ? (expanded ? '\u25BC' : '\u25B6') : '\u00B7'}
         </span>
 
-        {/* Hop indicator */}
-        <span className="text-gray-600 text-xs w-6 flex-shrink-0">
+        <span className="text-xs w-6 flex-shrink-0 font-mono" style={{ color: 'var(--cs-text-dim)' }}>
           H{node.hop}
         </span>
 
-        {/* Address */}
         <button
-          className="font-mono text-xs text-blue-400 hover:text-blue-300 hover:underline flex-shrink-0"
+          className="font-mono text-xs flex-shrink-0 hover:underline"
+          style={{ color: 'var(--cs-accent)' }}
           onClick={(e) => { e.stopPropagation(); onAddressClick(node.address); }}
           title={node.address}
         >
           {truncateAddress(node.address, 8)}
         </button>
 
-        {/* Label */}
         {node.label && (
-          <span className={`text-xs px-1.5 py-0.5 rounded ${ENTITY_COLORS[node.risk ?? ''] ?? 'bg-gray-700 text-gray-300'}`}>
+          <span className="text-xs px-1.5 py-0.5 rounded font-display" style={{ background: entityStyle.bg, color: entityStyle.color }}>
             {node.label}
           </span>
         )}
 
-        {/* Risk */}
         {node.risk && (
-          <span className={`text-xs font-medium ${RISK_COLORS[node.risk] ?? 'text-gray-400'}`}>
+          <span className="text-xs font-semibold font-display" style={{ color: RISK_COLORS[node.risk] ?? 'var(--cs-text-muted)' }}>
             {node.risk}
           </span>
         )}
 
-        {/* Value */}
         {depth > 0 && totalValue > 0n && (
-          <span className="text-xs text-gray-300 ml-auto">
+          <span className="text-xs font-mono ml-auto" style={{ color: 'var(--cs-text-secondary)' }}>
             {formatFlowValue(totalValue.toString(), primaryToken)}
           </span>
         )}
 
-        {/* Timestamp */}
         {latestTimestamp > 0 && (
-          <span className="text-xs text-gray-500 flex-shrink-0">
+          <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--cs-text-muted)' }}>
             {formatTimestamp(latestTimestamp)}
           </span>
         )}
 
-        {/* Edge count */}
         {node.edges.length > 1 && (
-          <span className="text-xs text-gray-600 flex-shrink-0">
+          <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--cs-text-dim)' }}>
             ({node.edges.length} txs)
           </span>
         )}
       </div>
 
-      {/* Children */}
       {expanded && hasChildren && (
         <div>
           {node.children.map((child) => (
@@ -243,7 +235,6 @@ export function FlowTree({
     setNodeCount(graph.nodes.length);
   }, [graphRef, rootAddress, direction]);
 
-  // Refresh tree every 2 seconds during streaming, once after completion
   useEffect(() => {
     refreshTree();
     if (!isStreaming) return;
@@ -258,18 +249,24 @@ export function FlowTree({
   try { minAmountBigInt = BigInt(minAmount); } catch { /* ignore */ }
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mt-4">
+    <div className="cs-card p-4 mt-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-gray-200">
-          Flow Tree ({nodeCount} addresses)
+        <h3 className="text-sm font-semibold font-display" style={{ color: 'var(--cs-text-primary)' }}>
+          Flow Tree <span className="font-mono font-normal" style={{ color: 'var(--cs-text-muted)' }}>({nodeCount} addresses)</span>
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {isStreaming && (
-            <span className="text-xs text-green-400 animate-pulse">Live</span>
+            <span className="flex items-center gap-1.5 text-xs font-display" style={{ color: 'var(--cs-accent)' }}>
+              <span className="cs-live-dot" style={{ width: 6, height: 6 }} />
+              Live
+            </span>
           )}
           <button
             onClick={refreshTree}
-            className="text-xs text-gray-400 hover:text-gray-200"
+            className="text-xs font-display transition-colors"
+            style={{ color: 'var(--cs-text-muted)' }}
+            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--cs-text-secondary)'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--cs-text-muted)'}
           >
             Refresh
           </button>

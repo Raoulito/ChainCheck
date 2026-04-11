@@ -10,13 +10,13 @@ interface ExposureChartProps {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  sanctioned: 'bg-red-500',
-  mixer: 'bg-orange-500',
-  darknet: 'bg-red-700',
-  gambling: 'bg-yellow-500',
-  exchange: 'bg-blue-500',
-  defi: 'bg-purple-500',
-  clean: 'bg-green-500',
+  sanctioned: 'var(--cs-red)',
+  mixer: 'var(--cs-orange)',
+  darknet: '#cc2244',
+  gambling: 'var(--cs-yellow)',
+  exchange: 'var(--cs-blue)',
+  defi: 'var(--cs-purple)',
+  clean: 'var(--cs-green)',
 };
 
 export function ExposureChart({ data }: ExposureChartProps) {
@@ -27,21 +27,20 @@ export function ExposureChart({ data }: ExposureChartProps) {
   if (entries.length === 0) return null;
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-      <p className="text-gray-400 text-xs uppercase tracking-wide mb-3">
+    <div className="cs-card p-4">
+      <p className="text-xs uppercase tracking-widest font-display mb-3" style={{ color: 'var(--cs-text-muted)' }}>
         Direct Exposure
       </p>
 
       {/* Bar */}
-      <div className="flex h-4 rounded-full overflow-hidden mb-3">
+      <div className="flex h-3 rounded-full overflow-hidden mb-4" style={{ background: 'var(--cs-bg-base)' }}>
         {entries.map(([type, pct]) => {
           const width = parseFloat(pct);
           if (width <= 0) return null;
           return (
             <div
               key={type}
-              className={`${TYPE_COLORS[type] ?? 'bg-gray-600'}`}
-              style={{ width: `${width}%` }}
+              style={{ width: `${width}%`, background: TYPE_COLORS[type] ?? 'var(--cs-text-muted)' }}
               title={`${type}: ${pct}`}
             />
           );
@@ -49,12 +48,12 @@ export function ExposureChart({ data }: ExposureChartProps) {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-xs">
+      <div className="flex flex-wrap gap-4 text-xs font-display">
         {entries.map(([type, pct]) => (
-          <div key={type} className="flex items-center gap-1">
-            <span className={`w-2.5 h-2.5 rounded-full ${TYPE_COLORS[type] ?? 'bg-gray-600'}`} />
-            <span className="text-gray-300 capitalize">{type}</span>
-            <span className="text-gray-500">{pct}</span>
+          <div key={type} className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: TYPE_COLORS[type] ?? 'var(--cs-text-muted)' }} />
+            <span className="capitalize" style={{ color: 'var(--cs-text-secondary)' }}>{type}</span>
+            <span style={{ color: 'var(--cs-text-muted)' }}>{pct}</span>
           </div>
         ))}
       </div>

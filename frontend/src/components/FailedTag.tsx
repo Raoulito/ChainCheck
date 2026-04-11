@@ -1,6 +1,9 @@
 export function FailedTag() {
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-900/50 text-red-400">
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold font-display"
+      style={{ background: 'var(--cs-red-dim)', color: 'var(--cs-red)', border: '1px solid var(--cs-red)' }}
+    >
       FAILED
     </span>
   );

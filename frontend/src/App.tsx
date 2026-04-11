@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AddressInput } from './components/AddressInput';
@@ -24,6 +24,8 @@ import { useLookup, useAddressLabel, useRiskScore, useExposure } from './api/hoo
 import { useTraceStream } from './hooks/useTraceStream';
 import { useTraceSession } from './stores/traceSessionStore';
 import { exportTraceCsv } from './utils/exportCsv';
+import { getLabelStatus } from './api/client';
+import type { LabelStatusResponse } from './api/client';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,9 +42,14 @@ function Explorer() {
   const [chain, setChain] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [labelStats, setLabelStats] = useState<LabelStatusResponse | null>(null);
+
+  useEffect(() => {
+    getLabelStatus().then(setLabelStats).catch(() => {});
+  }, []);
   const { push } = useTraceSession();
   const graphRef = useRef<GraphHandle>(null);
-  const { progress, metadata, status: traceStatus, startTracing, cancelTracing } = useTraceStream(graphRef);
+  const { progress, metadata, status: traceStatus, startTracing, cancelTracing, peelingChain } = useTraceStream(graphRef);
   const [traceDirection, setTraceDirection] = useState<'forward' | 'backward'>('forward');
   const [traceMinAmount, setTraceMinAmount] = useState('0');
   const [traceTokenFilter, setTraceTokenFilter] = useState('');
@@ -69,50 +76,74 @@ function Explorer() {
   const totalPages = data ? Math.ceil(data.total / data.per_page) : 0;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="min-h-screen" style={{ background: 'var(--cs-bg-deep)' }}>
+      <div className="max-w-7xl mx-auto px-6 py-10">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">ChainScope</h1>
-          <p className="text-gray-400">On-chain forensics explorer</p>
-        </div>
+        <header className="text-center mb-12 cs-fade-up">
+          <div className="inline-flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'var(--cs-accent-dim)', border: '1px solid var(--cs-accent)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--cs-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                <path d="M2 12h20" />
+              </svg>
+            </div>
+            <h1 className="text-4xl font-bold font-display tracking-tight" style={{ color: 'var(--cs-text-primary)' }}>
+              Chain<span style={{ color: 'var(--cs-accent)' }}>Scope</span>
+            </h1>
+          </div>
+          <p className="text-sm font-display" style={{ color: 'var(--cs-text-muted)', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+            On-chain forensics explorer
+          </p>
+          {labelStats && (
+            <div className="mt-5 inline-flex items-center gap-5 px-5 py-2.5 rounded-lg" style={{ background: 'var(--cs-bg-raised)', border: '1px solid var(--cs-border)' }}>
+              <span className="text-xs font-display" style={{ color: 'var(--cs-text-secondary)' }}>
+                <span className="font-semibold" style={{ color: 'var(--cs-accent)' }}>{labelStats.total_labels.toLocaleString()}</span> known addresses
+              </span>
+              {Object.entries(labelStats.by_chain).map(([ch, count]) => (
+                <span key={ch} className="text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
+                  <span className="uppercase" style={{ color: 'var(--cs-text-secondary)' }}>{ch}</span>{' '}{count.toLocaleString()}
+                </span>
+              ))}
+            </div>
+          )}
+        </header>
 
         {/* Search */}
-        <AddressInput onSubmit={handleSubmit} isLoading={isLoading} />
+        <div className="cs-fade-up" style={{ animationDelay: '0.1s' }}>
+          <AddressInput onSubmit={handleSubmit} isLoading={isLoading} />
+        </div>
         <Breadcrumb onNavigate={handleAddressClick} />
         {!data && !isLoading && (
-          <>
+          <div className="cs-fade-up" style={{ animationDelay: '0.2s' }}>
             <ExampleLookups onSelect={handleSubmit} />
             <LabelManager />
             <CaseManager onOpenInvestigation={(_id, addr, ch) => handleSubmit(ch, addr)} />
-          </>
+          </div>
         )}
 
-        {/* Instant local data — shows immediately while lookup loads */}
+        {/* Instant local data */}
         {address && chain && (
-          <div className="mt-8">
-            {/* Address header */}
+          <div className="mt-8 cs-fade-up">
             <div className="mb-4">
               <div className="flex items-center gap-3 flex-wrap">
-                <p className="text-gray-400 text-sm">
-                  <span className="uppercase font-medium text-gray-300">{chain}</span>
-                  {' '}&middot;{' '}
-                  <span className="font-mono text-xs">{address}</span>
+                <p className="font-display text-sm" style={{ color: 'var(--cs-text-secondary)' }}>
+                  <span className="uppercase font-semibold tracking-wider" style={{ color: 'var(--cs-accent)' }}>{chain}</span>
+                  {' '}<span style={{ color: 'var(--cs-text-muted)' }}>&middot;</span>{' '}
+                  <span className="font-mono text-xs" style={{ color: 'var(--cs-text-secondary)' }}>{address}</span>
                 </p>
                 <AddLabelForm address={address} chain={chain} />
               </div>
             </div>
 
-            {/* Local label (instant) */}
             {labelData && (
-              <div className="mb-3 inline-flex items-center gap-2 px-3 py-1.5 rounded bg-blue-900/30 border border-blue-700/50">
-                <span className="text-xs text-blue-300 font-medium">{labelData.entity_name}</span>
-                <span className="text-xs text-blue-500">({labelData.entity_type})</span>
-                <span className="text-[10px] text-gray-500">{labelData.source}</span>
+              <div className="mb-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: 'var(--cs-blue-dim)', border: '1px solid var(--cs-blue)' }}>
+                <span className="text-xs font-semibold" style={{ color: 'var(--cs-blue)' }}>{labelData.entity_name}</span>
+                <span className="text-xs" style={{ color: 'var(--cs-text-muted)' }}>({labelData.entity_type})</span>
+                <span className="text-xs" style={{ color: 'var(--cs-text-dim)', fontSize: '10px' }}>{labelData.source}</span>
               </div>
             )}
 
-            {/* Risk badge (fast local query) */}
             {riskData && (
               <div className="mb-4">
                 <RiskBadge risk={riskData} />
@@ -121,19 +152,20 @@ function Explorer() {
           </div>
         )}
 
-        {/* Loading skeleton — only for the transaction/stats section */}
+        {/* Loading skeleton */}
         {isLoading && address && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <span className="animate-pulse">Fetching on-chain data...</span>
+          <div className="space-y-4 mt-8">
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--cs-text-muted)' }}>
+              <span className="cs-live-dot" />
+              <span className="font-display">Fetching on-chain data...</span>
             </div>
             <div className="grid grid-cols-4 gap-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="bg-gray-800 rounded-lg p-4 h-20 animate-pulse" />
+                <div key={i} className="cs-skeleton h-20 rounded-xl" style={{ animationDelay: `${i * 0.1}s` }} />
               ))}
             </div>
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="bg-gray-800 rounded h-10 animate-pulse" />
+              <div key={i} className="cs-skeleton h-10 rounded-lg" style={{ animationDelay: `${(i + 4) * 0.05}s` }} />
             ))}
           </div>
         )}
@@ -150,16 +182,16 @@ function Explorer() {
 
         {/* Warnings */}
         {data?.warnings && data.warnings.length > 0 && (
-          <div className="mt-6 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-3">
+          <div className="mt-6 rounded-xl p-4" style={{ background: 'var(--cs-yellow-dim)', border: '1px solid var(--cs-yellow)' }}>
             {data.warnings.map((w, i) => (
-              <p key={i} className="text-yellow-400 text-sm">{w}</p>
+              <p key={i} className="text-sm font-display" style={{ color: 'var(--cs-yellow)' }}>{w}</p>
             ))}
           </div>
         )}
 
-        {/* Full results — loads when on-chain data arrives */}
+        {/* Full results */}
         {data && !isLoading && (
-          <div>
+          <div className="cs-fade-up">
             <StatsHeader stats={data.stats} chain={data.chain} />
             {exposureData && (
               <div className="mb-4">
@@ -167,7 +199,6 @@ function Explorer() {
               </div>
             )}
 
-            {/* Trace */}
             <TraceControls
               address={data.address}
               chain={data.chain}
@@ -180,9 +211,32 @@ function Explorer() {
               onCancel={cancelTracing}
             />
             <TraceProgress progress={progress} status={traceStatus} metadata={metadata} />
+
+            {/* Peeling chain alert */}
+            {peelingChain && peelingChain.detected && (
+              <div className="mt-3 p-4 rounded-xl" style={{ background: 'var(--cs-orange-dim)', border: '1px solid var(--cs-orange)' }}>
+                <p className="text-sm font-semibold font-display" style={{ color: 'var(--cs-orange)' }}>
+                  Peeling chain detected: {peelingChain.chain_length} hops, {(Number(peelingChain.total_peeled) / 1e8).toFixed(4)} BTC extracted to {peelingChain.peel_destinations.length} destinations
+                </p>
+                {peelingChain.peel_destinations.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {peelingChain.peel_destinations.map((d, i) => (
+                      <div key={i} className="text-xs font-mono" style={{ color: 'var(--cs-orange)', opacity: 0.8 }}>
+                        {d.label}: {(Number(d.amount) / 1e8).toFixed(6)} BTC ({d.address.slice(0, 8)}...{d.address.slice(-4)})
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {peelingChain.remainder_address && (
+                  <p className="mt-1 text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
+                    Remainder: {(Number(peelingChain.remainder_amount) / 1e8).toFixed(4)} BTC at {peelingChain.remainder_address.slice(0, 8)}...{peelingChain.remainder_address.slice(-4)}
+                  </p>
+                )}
+              </div>
+            )}
+
             <GraphView ref={graphRef} chain={data.chain} onAddressClick={(addr) => handleAddressClick(data.chain, addr)} />
 
-            {/* Flow tree + filters (visible after trace starts) */}
             {traceStatus !== 'idle' && (
               <>
                 <TraceFilterControls
@@ -215,7 +269,6 @@ function Explorer() {
               </>
             )}
 
-            {/* Analysis panel */}
             <AnalysisPanel
               transactions={data.transactions}
               address={data.address}
@@ -223,14 +276,12 @@ function Explorer() {
               onAddressClick={handleAddressClick}
             />
 
-            {/* Filters */}
             <FilterBar
               spamCount={data.spam_filtered}
               failedCount={data.failed_filtered}
               dustCount={data.dust_filtered}
             />
 
-            {/* Transaction table */}
             <TxTable
               transactions={data.transactions}
               chain={data.chain}

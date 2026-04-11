@@ -22,18 +22,18 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-8">
-          <div className="max-w-xl bg-red-900/30 border border-red-700 rounded-lg p-6">
-            <h2 className="text-lg font-bold text-red-400 mb-2">Render Error</h2>
-            <pre className="text-sm text-red-300 whitespace-pre-wrap break-words">
+        <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--cs-bg-deep)', color: 'var(--cs-text-primary)' }}>
+          <div className="max-w-xl rounded-xl p-6" style={{ background: 'var(--cs-red-dim)', border: '1px solid var(--cs-red)' }}>
+            <h2 className="text-lg font-bold font-display mb-2" style={{ color: 'var(--cs-red)' }}>Render Error</h2>
+            <pre className="text-sm font-mono whitespace-pre-wrap break-words" style={{ color: 'var(--cs-red)', opacity: 0.8 }}>
               {this.state.error.message}
             </pre>
-            <pre className="text-xs text-red-400/60 mt-2 whitespace-pre-wrap break-words max-h-40 overflow-auto">
+            <pre className="text-xs font-mono mt-2 whitespace-pre-wrap break-words max-h-40 overflow-auto" style={{ color: 'var(--cs-red)', opacity: 0.5 }}>
               {this.state.error.stack}
             </pre>
             <button
               onClick={() => this.setState({ error: null })}
-              className="mt-4 px-4 py-2 bg-red-700 hover:bg-red-600 rounded text-sm"
+              className="cs-btn-danger mt-4"
             >
               Try Again
             </button>

@@ -102,6 +102,16 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                 await _emit(job, "warning", {"message": f"Fetch failed for {address[:10]}...: {exc}"})
                 continue
 
+            # Peeling chain detection (BTC only, root node only)
+            if job.chain == "btc" and hop == 0:
+                from app.services.peeling import detect_peeling_chain
+                try:
+                    peel_result = await detect_peeling_chain(address, txs, session)
+                    if peel_result.detected:
+                        await _emit(job, "peeling_chain_detected", peel_result.to_dict())
+                except Exception as exc:
+                    logger.debug("Peeling detection failed for %s: %s", address[:12], exc)
+
             # Apply dust floor
             dust_floor = config.dust_floor.get(job.chain, Decimal("0"))
 

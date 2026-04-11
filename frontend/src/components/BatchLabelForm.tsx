@@ -61,22 +61,22 @@ export function BatchLabelForm() {
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="text-xs px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 border border-gray-600"
-      >
+      <button onClick={() => setOpen(true)} className="cs-btn-ghost">
         Batch label addresses
       </button>
     );
   }
 
   return (
-    <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 mb-4">
+    <div className="cs-card p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-white">Batch Label Addresses</h3>
+        <h3 className="text-sm font-semibold font-display" style={{ color: 'var(--cs-text-primary)' }}>Batch Label Addresses</h3>
         <button
           onClick={() => { setOpen(false); setStatus(null); }}
-          className="text-gray-400 hover:text-white text-sm"
+          className="text-sm font-display transition-colors"
+          style={{ color: 'var(--cs-text-muted)' }}
+          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--cs-text-primary)'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--cs-text-muted)'}
         >
           Close
         </button>
@@ -84,47 +84,35 @@ export function BatchLabelForm() {
 
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Entity name</label>
+          <label className="block text-xs font-display uppercase tracking-wider mb-1" style={{ color: 'var(--cs-text-muted)' }}>Entity name</label>
           <input
             type="text"
             placeholder="e.g. Binance"
             value={entityName}
             onChange={(e) => setEntityName(e.target.value)}
-            className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
+            className="cs-input w-full"
           />
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Chain</label>
-            <select
-              value={chain}
-              onChange={(e) => setChain(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-600 rounded px-1 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
-            >
+            <label className="block text-xs font-display uppercase tracking-wider mb-1" style={{ color: 'var(--cs-text-muted)' }}>Chain</label>
+            <select value={chain} onChange={(e) => setChain(e.target.value)} className="cs-select w-full">
               {CHAINS.map((c) => (
                 <option key={c} value={c}>{c.toUpperCase()}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Type</label>
-            <select
-              value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-600 rounded px-1 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
-            >
+            <label className="block text-xs font-display uppercase tracking-wider mb-1" style={{ color: 'var(--cs-text-muted)' }}>Type</label>
+            <select value={entityType} onChange={(e) => setEntityType(e.target.value)} className="cs-select w-full">
               {ENTITY_TYPES.map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Confidence</label>
-            <select
-              value={confidence}
-              onChange={(e) => setConfidence(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-600 rounded px-1 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
-            >
+            <label className="block text-xs font-display uppercase tracking-wider mb-1" style={{ color: 'var(--cs-text-muted)' }}>Confidence</label>
+            <select value={confidence} onChange={(e) => setConfidence(e.target.value)} className="cs-select w-full">
               {CONFIDENCE_LEVELS.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
@@ -134,10 +122,10 @@ export function BatchLabelForm() {
       </div>
 
       <div className="mb-3">
-        <label className="block text-xs text-gray-400 mb-1">
+        <label className="block text-xs font-display uppercase tracking-wider mb-1" style={{ color: 'var(--cs-text-muted)' }}>
           Addresses (one per line, or separated by commas/spaces)
           {addressCount > 0 && (
-            <span className="ml-2 text-blue-400">{addressCount} address{addressCount !== 1 ? 'es' : ''}</span>
+            <span className="ml-2 font-mono normal-case" style={{ color: 'var(--cs-accent)' }}>{addressCount} address{addressCount !== 1 ? 'es' : ''}</span>
           )}
         </label>
         <textarea
@@ -145,7 +133,8 @@ export function BatchLabelForm() {
           onChange={(e) => setAddresses(e.target.value)}
           placeholder="Paste addresses here..."
           rows={6}
-          className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-blue-500 resize-y"
+          className="cs-input w-full resize-y"
+          style={{ fontSize: '12px' }}
         />
       </div>
 
@@ -153,12 +142,13 @@ export function BatchLabelForm() {
         <button
           onClick={handleSubmit}
           disabled={loading || addressCount === 0}
-          className="text-sm px-4 py-1.5 rounded bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50"
+          className="cs-btn-primary"
+          style={{ padding: '8px 18px', fontSize: '13px' }}
         >
           {loading ? 'Saving...' : `Label ${addressCount} address${addressCount !== 1 ? 'es' : ''}`}
         </button>
         {status && (
-          <span className={`text-sm ${status.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+          <span className="text-sm font-display" style={{ color: status.type === 'success' ? 'var(--cs-green)' : 'var(--cs-red)' }}>
             {status.msg}
           </span>
         )}

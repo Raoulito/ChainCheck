@@ -4,63 +4,24 @@ import {
   listInvestigations,
   createInvestigation,
   deleteInvestigation,
-  isAuthenticated,
-  login,
-  register,
-  logout,
 } from '../api/auth';
-import { truncateAddress, formatTimestamp } from '../utils/formatters';
+import { truncateAddress } from '../utils/formatters';
 
 interface CaseManagerProps {
   onOpenInvestigation: (id: string, address: string, chain: string) => void;
 }
 
 export function CaseManager({ onOpenInvestigation }: CaseManagerProps) {
-  const [authed, setAuthed] = useState(isAuthenticated());
   const [investigations, setInvestigations] = useState<InvestigationSummary[]>([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-  // Auth form state
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  // Create form state
   const [newTitle, setNewTitle] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newChain, setNewChain] = useState('eth');
 
-  const loadInvestigations = async () => {
-    try {
-      const list = await listInvestigations();
-      setInvestigations(list);
-    } catch {
-      setInvestigations([]);
-    }
-  };
-
   useEffect(() => {
-    if (authed) loadInvestigations();
-  }, [authed]);
-
-  const handleAuth = async () => {
-    setAuthError(null);
-    try {
-      if (authMode === 'login') {
-        await login(email, password);
-      } else {
-        await register(email, password, displayName);
-      }
-      setAuthed(true);
-      setEmail('');
-      setPassword('');
-      setDisplayName('');
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Auth failed');
-    }
-  };
+    listInvestigations().then(setInvestigations).catch(() => setInvestigations([]));
+  }, []);
 
   const handleCreate = async () => {
     if (!newTitle || !newAddress) return;
@@ -78,95 +39,27 @@ export function CaseManager({ onOpenInvestigation }: CaseManagerProps) {
     setInvestigations(investigations.filter(i => i.id !== id));
   };
 
-  const handleLogout = () => {
-    logout();
-    setAuthed(false);
-    setInvestigations([]);
-  };
-
-  // Auth form
-  if (!authed) {
-    return (
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-md mx-auto mt-8">
-        <h2 className="text-lg font-medium text-gray-200 mb-4">
-          {authMode === 'login' ? 'Sign In' : 'Create Account'}
-        </h2>
-
-        <div className="space-y-3">
-          {authMode === 'register' && (
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Display name"
-              className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600"
-            />
-          )}
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email"
-            className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="w-full bg-gray-700 text-gray-200 text-sm rounded px-3 py-2 border border-gray-600"
-            onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
-          />
-
-          {authError && <p className="text-red-400 text-xs">{authError}</p>}
-
-          <button
-            onClick={handleAuth}
-            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded font-medium"
-          >
-            {authMode === 'login' ? 'Sign In' : 'Create Account'}
-          </button>
-
-          <button
-            onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-            className="w-full text-xs text-gray-400 hover:text-gray-200"
-          >
-            {authMode === 'login' ? 'Need an account? Register' : 'Already have an account? Sign in'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mt-4">
+    <div className="cs-card p-4 mt-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-medium text-gray-200">Investigations</h2>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowCreate(!showCreate)}
-            className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
-          >
-            New Investigation
-          </button>
-          <button
-            onClick={handleLogout}
-            className="text-xs px-3 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
-          >
-            Sign Out
-          </button>
-        </div>
+        <h2 className="text-sm font-semibold font-display" style={{ color: 'var(--cs-text-primary)' }}>Investigations</h2>
+        <button
+          onClick={() => setShowCreate(!showCreate)}
+          className="cs-btn-primary"
+          style={{ padding: '6px 14px', fontSize: '12px' }}
+        >
+          New Investigation
+        </button>
       </div>
 
-      {/* Create form */}
       {showCreate && (
-        <div className="mb-4 p-3 bg-gray-700/50 rounded space-y-2">
+        <div className="mb-4 p-3 rounded-lg space-y-2" style={{ background: 'var(--cs-bg-surface)' }}>
           <input
             type="text"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="Investigation title"
-            className="w-full bg-gray-700 text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-600"
+            className="cs-input w-full"
           />
           <div className="flex gap-2">
             <input
@@ -174,12 +67,12 @@ export function CaseManager({ onOpenInvestigation }: CaseManagerProps) {
               value={newAddress}
               onChange={(e) => setNewAddress(e.target.value)}
               placeholder="Root address"
-              className="flex-1 bg-gray-700 text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-600 font-mono"
+              className="cs-input flex-1"
             />
             <select
               value={newChain}
               onChange={(e) => setNewChain(e.target.value)}
-              className="bg-gray-700 text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-600"
+              className="cs-select"
             >
               <option value="eth">ETH</option>
               <option value="btc">BTC</option>
@@ -187,40 +80,48 @@ export function CaseManager({ onOpenInvestigation }: CaseManagerProps) {
               <option value="polygon">Polygon</option>
             </select>
           </div>
-          <button
-            onClick={handleCreate}
-            className="text-xs px-3 py-1 rounded bg-green-700 text-white hover:bg-green-600"
-          >
+          <button onClick={handleCreate} className="cs-btn-primary" style={{ padding: '6px 14px', fontSize: '12px', background: 'linear-gradient(135deg, var(--cs-green), #00b894)' }}>
             Create
           </button>
         </div>
       )}
 
-      {/* Investigation list */}
       {investigations.length === 0 ? (
-        <p className="text-gray-500 text-xs text-center py-4">No investigations yet</p>
+        <p className="text-xs font-display text-center py-4" style={{ color: 'var(--cs-text-muted)' }}>No investigations yet</p>
       ) : (
         <div className="space-y-1">
           {investigations.map((inv) => (
             <div
               key={inv.id}
-              className="flex items-center justify-between py-2 px-3 hover:bg-gray-700/50 rounded cursor-pointer"
+              className="flex items-center justify-between py-2.5 px-3 rounded-lg cursor-pointer transition-colors"
+              style={{ border: '1px solid transparent' }}
               onClick={() => onOpenInvestigation(inv.id, inv.root_address, inv.root_chain)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--cs-bg-hover)';
+                e.currentTarget.style.borderColor = 'var(--cs-border)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = 'transparent';
+              }}
             >
               <div>
-                <p className="text-sm text-gray-200">{inv.title}</p>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm font-display" style={{ color: 'var(--cs-text-primary)' }}>{inv.title}</p>
+                <p className="text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
                   {inv.root_chain.toUpperCase()} {truncateAddress(inv.root_address, 6)}
                   {' '}&middot;{' '}v{inv.version}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono" style={{ color: 'var(--cs-text-muted)' }}>
                   {new Date(inv.updated_at).toLocaleDateString()}
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDelete(inv.id); }}
-                  className="text-xs text-red-400 hover:text-red-300 px-1"
+                  className="text-xs font-display transition-colors"
+                  style={{ color: 'var(--cs-red)', opacity: 0.6 }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
                 >
                   Delete
                 </button>

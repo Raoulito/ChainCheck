@@ -18,6 +18,16 @@ interface TraceMetadata {
   pruned_at: { address: string; reason: string; hop: number }[];
 }
 
+export interface PeelingChainAlert {
+  detected: boolean;
+  chain_length: number;
+  total_peeled: string;
+  total_peeled_usd: string | null;
+  peel_destinations: { address: string; label: string; amount: string }[];
+  remainder_address: string | null;
+  remainder_amount: string;
+}
+
 interface GraphHandle {
   addNode: (node: { address: string; label: string | null; risk: string | null; hop: number }) => void;
   addEdges: (edges: { from: string; to: string; value: string; tx_hash: string; token: string; timestamp: number }[]) => void;
@@ -33,6 +43,7 @@ export function useTraceStream(graphRef: React.RefObject<GraphHandle | null>) {
   const [metadata, setMetadata] = useState<TraceMetadata | null>(null);
   const [status, setStatus] = useState<TraceStatus>('idle');
   const [jobId, setJobId] = useState<string | null>(null);
+  const [peelingChain, setPeelingChain] = useState<PeelingChainAlert | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
 
   // Flush counters to React state every 1 second
@@ -49,6 +60,7 @@ export function useTraceStream(graphRef: React.RefObject<GraphHandle | null>) {
     counters.current = { nodes: 0, edges: 0, hop: 0, maxHops: params.max_hops, apiCalls: 0, apiCallsLimit: 200 };
     setProgress(null);
     setMetadata(null);
+    setPeelingChain(null);
     setStatus('streaming');
 
     const job = await startTrace(params);
@@ -76,6 +88,10 @@ export function useTraceStream(graphRef: React.RefObject<GraphHandle | null>) {
       counters.current.maxHops = p.max_hops;
       counters.current.apiCalls = p.api_calls_used;
       counters.current.apiCallsLimit = p.api_calls_limit;
+    });
+
+    source.addEventListener('peeling_chain_detected', (e: MessageEvent) => {
+      setPeelingChain(JSON.parse(e.data));
     });
 
     source.addEventListener('completed', (e: MessageEvent) => {
@@ -110,5 +126,5 @@ export function useTraceStream(graphRef: React.RefObject<GraphHandle | null>) {
     setProgress({ ...counters.current });
   }, [jobId]);
 
-  return { progress, metadata, status, startTracing, cancelTracing, jobId };
+  return { progress, metadata, status, startTracing, cancelTracing, jobId, peelingChain };
 }
