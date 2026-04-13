@@ -94,9 +94,14 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                     await _emit(job, "pruned", {"address": address, "reason": addr_label["entity_type"], "hop": hop})
                     continue
 
-            # Fetch transactions
+            # Fetch a large batch so value/dust filtering still leaves enough edges.
+            # max_txs_per_node caps edges, not the raw API fetch size.
+            fetch_size = min(job.max_txs_per_node * 20, 10000)
             try:
-                txs, _ = await provider.fetch_transactions(address, page=1, per_page=job.max_txs_per_node)
+                txs, _ = await provider.fetch_transactions(
+                    address, page=1, per_page=fetch_size,
+                    direction=job.direction,
+                )
                 api_calls_used += 1
             except Exception as exc:
                 await _emit(job, "warning", {"message": f"Fetch failed for {address[:10]}...: {exc}"})
@@ -117,8 +122,13 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
 
             # Process transactions, discover new nodes/edges
             edge_batch: list[dict] = []
+            edges_this_node = 0
 
             for tx in txs:
+                # Cap edges per node to max_txs_per_node
+                if edges_this_node >= job.max_txs_per_node:
+                    break
+
                 if tx.status == "failed" or tx.spam_score != "clean":
                     continue
 
@@ -160,6 +170,7 @@ async def run_trace(job: TraceJob, session: AsyncSession) -> None:
                     "timestamp": tx.timestamp,
                 }
                 edges.append(edge)
+                edges_this_node += 1
                 edge_batch.append(edge)
 
                 # Batch emit edges (max 10 per event)

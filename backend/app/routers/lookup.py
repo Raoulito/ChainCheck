@@ -46,51 +46,57 @@ async def lookup_address(
     provider = provider_cls()
 
     try:
-        txs, total = await provider.fetch_transactions(address, page=page, per_page=per_page)
+        # Fetch with raised page cap (20 pages × 10k = 200k txs per endpoint)
+        # so stats cover the full history for most addresses.
+        all_txs, total_from_provider = await provider.fetch_transactions(
+            address, page=1, per_page=10000, max_pages=20,
+        )
+        # Get the real on-chain balance instead of computing from partial tx history
+        on_chain_balance = await provider.get_balance(address)
     finally:
         await provider.close()
 
     # Pipeline: spam filter → dust floor → change detect → method decode → stats
 
     # 1. Spam filter
-    txs, spam_count = apply_spam_filter(txs)
+    all_txs, spam_count = apply_spam_filter(all_txs)
 
     # 2. Dust floor
-    clean_txs = [tx for tx in txs if tx.spam_score == "clean"]
-    spam_txs = [tx for tx in txs if tx.spam_score != "clean"]
+    clean_txs = [tx for tx in all_txs if tx.spam_score == "clean"]
+    spam_txs = [tx for tx in all_txs if tx.spam_score != "clean"]
     clean_txs, dust_count = provider._apply_dust_floor(clean_txs)
-    txs = clean_txs + spam_txs
+    all_txs = clean_txs + spam_txs
 
-    # 3. Change detection (BTC only)
+    # 3. Compute stats from the FULL set (exclude failed, spam, dust)
+    failed_count = sum(1 for tx in all_txs if tx.status == "failed")
+    stats = _compute_stats(all_txs, address, chain, on_chain_balance)
+
+    # 4. Sort and paginate for display
+    all_txs.sort(key=lambda t: t.timestamp, reverse=True)
+    total_all = len(all_txs)
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_txs = all_txs[start:end]
+
+    # 5. Change detection (BTC only, display page only)
     if chain == "btc":
-        for i, tx in enumerate(txs):
+        for i, tx in enumerate(page_txs):
             if tx.change_output is None and tx.outputs and len(tx.outputs) >= 2:
                 change = await detect_change_output(tx)
                 if change:
-                    txs[i] = tx.model_copy(update={"change_output": change})
+                    page_txs[i] = tx.model_copy(update={"change_output": change})
 
-    # 4. Method decode (ETH only)
-    if chain == "eth":
+    # 6. Method decode (ETH only, display page only)
+    if chain in ("eth", "bsc", "polygon"):
         selectors = [
-            tx.method_name for tx in txs
+            tx.method_name for tx in page_txs
             if tx.method_name and tx.method_name.startswith("0x")
         ]
         if selectors:
             decoded = await batch_decode_methods(selectors, session)
-            for i, tx in enumerate(txs):
+            for i, tx in enumerate(page_txs):
                 if tx.method_name and tx.method_name in decoded and decoded[tx.method_name]:
-                    txs[i] = tx.model_copy(update={"method_name": decoded[tx.method_name]})
-
-    # 5. Compute stats (exclude failed, spam, dust)
-    failed_count = sum(1 for tx in txs if tx.status == "failed")
-    stats = _compute_stats(txs, address, chain)
-
-    # 6. Sort and paginate
-    txs.sort(key=lambda t: t.timestamp, reverse=True)
-    total_all = len(txs)
-    start = (page - 1) * per_page
-    end = start + per_page
-    page_txs = txs[start:end]
+                    page_txs[i] = tx.model_copy(update={"method_name": decoded[tx.method_name]})
 
     # 7. Cache finalized transactions
     await _cache_finalized(page_txs, chain, session)
@@ -111,7 +117,8 @@ async def lookup_address(
 
 
 def _compute_stats(
-    txs: list[NormalizedTx], address: str, chain: str
+    txs: list[NormalizedTx], address: str, chain: str,
+    on_chain_balance: str | None = None,
 ) -> AddressStats:
     """Compute address stats from successful, non-spam, non-dust transactions."""
     total_received = Decimal("0")
@@ -127,7 +134,7 @@ def _compute_stats(
 
         # Determine direction
         is_received = False
-        if chain == "eth":
+        if chain in ("eth", "bsc", "polygon"):
             is_received = (tx.to_address or "").lower() == address.lower()
         elif chain == "btc":
             if tx.outputs:
@@ -150,13 +157,25 @@ def _compute_stats(
         if tx.timestamp > 0:
             timestamps.append(tx.timestamp)
 
-    balance = total_received - total_sent
+    # Use real on-chain balance and reconcile received/sent so the math is consistent.
+    # The tx-derived totals miss gas fees, internal transfers, contract interactions, etc.
+    # We adjust sent so that: received - sent = on-chain balance.
+    if on_chain_balance is not None:
+        real_balance = Decimal(on_chain_balance)
+        # The gap is everything we missed (gas, partial history, internal txs, etc.)
+        gap = (total_received - total_sent) - real_balance
+        # Attribute the gap to sent (gas fees, missed outgoing txs)
+        total_sent += gap
+        balance = on_chain_balance
+    else:
+        balance = str(total_received - total_sent)
+
     count = sum(1 for tx in txs if tx.status != "failed" and tx.spam_score == "clean")
 
     return AddressStats(
         total_received=str(total_received),
         total_sent=str(total_sent),
-        balance=str(balance),
+        balance=balance,
         balance_unconfirmed=str(balance_unconfirmed),
         tx_count=count,
         first_seen=min(timestamps) if timestamps else None,

@@ -35,6 +35,20 @@ class EvmBaseProvider(ChainProvider):
             "apikey": self._api_key(),
         }
 
+    async def get_balance(self, address: str) -> str | None:
+        params = {
+            **self._base_params(),
+            "module": "account",
+            "action": "balance",
+            "address": address,
+            "tag": "latest",
+        }
+        response = await self._rate_limited_request(ETHERSCAN_V2_BASE, params)
+        data = response.json()
+        if data.get("status") == "1" and data.get("result"):
+            return data["result"]
+        return None
+
     async def get_latest_block(self) -> int:
         params = {
             **self._base_params(),
@@ -55,14 +69,16 @@ class EvmBaseProvider(ChainProvider):
         raise ValueError(f"Unexpected eth_blockNumber response: {data}")
 
     async def fetch_transactions(
-        self, address: str, page: int = 1, per_page: int = 50
+        self, address: str, page: int = 1, per_page: int = 50,
+        direction: str | None = None,
+        max_pages: int = 5,
     ) -> tuple[list[NormalizedTx], int]:
         warnings: list[str] = []
         latest_block = await self.get_latest_block()
 
-        native_task = self._fetch_txlist(address, latest_block)
-        token_task = self._fetch_tokentx(address, latest_block)
-        internal_task = self._fetch_internal(address, latest_block, warnings)
+        native_task = self._fetch_txlist(address, latest_block, max_pages=max_pages)
+        token_task = self._fetch_tokentx(address, latest_block, max_pages=max_pages)
+        internal_task = self._fetch_internal(address, latest_block, warnings, max_pages=max_pages)
 
         native_txs, token_txs, internal_txs = await asyncio.gather(
             native_task, token_task, internal_task
@@ -78,6 +94,13 @@ class EvmBaseProvider(ChainProvider):
                 seen.add(key)
                 unique.append(tx)
 
+        # Filter by direction before slicing so the tracer gets relevant txs
+        addr_lower = address.lower()
+        if direction == "forward":
+            unique = [tx for tx in unique if tx.from_address and tx.from_address.lower() == addr_lower]
+        elif direction == "backward":
+            unique = [tx for tx in unique if tx.to_address and tx.to_address.lower() == addr_lower]
+
         unique.sort(key=lambda t: t.timestamp, reverse=True)
         total = len(unique)
 
@@ -85,18 +108,18 @@ class EvmBaseProvider(ChainProvider):
         end = start + per_page
         return unique[start:end], total
 
-    async def _fetch_txlist(self, address: str, latest_block: int) -> list[NormalizedTx]:
-        return await self._paginate_by_block(address, "txlist", "native", latest_block)
+    async def _fetch_txlist(self, address: str, latest_block: int, max_pages: int = 5) -> list[NormalizedTx]:
+        return await self._paginate_by_block(address, "txlist", "native", latest_block, max_pages=max_pages)
 
-    async def _fetch_tokentx(self, address: str, latest_block: int) -> list[NormalizedTx]:
-        return await self._paginate_by_block(address, "tokentx", "token", latest_block)
+    async def _fetch_tokentx(self, address: str, latest_block: int, max_pages: int = 5) -> list[NormalizedTx]:
+        return await self._paginate_by_block(address, "tokentx", "token", latest_block, max_pages=max_pages)
 
     async def _fetch_internal(
-        self, address: str, latest_block: int, warnings: list[str]
+        self, address: str, latest_block: int, warnings: list[str], max_pages: int = 5,
     ) -> list[NormalizedTx]:
         try:
             return await self._paginate_by_block(
-                address, "txlistinternal", "internal", latest_block, max_retries=3
+                address, "txlistinternal", "internal", latest_block, max_retries=3, max_pages=max_pages,
             )
         except Exception as exc:
             logger.warning(

@@ -200,8 +200,12 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
           },
         ],
         layout: { name: 'preset' },
-        minZoom: 0.1,
-        maxZoom: 5,
+        minZoom: 0.05,
+        maxZoom: 4,
+        textureOnViewport: true,
+        hideEdgesOnViewport: false,
+        hideLabelsOnViewport: false,
+        pixelRatio: Math.min(window.devicePixelRatio, 2),
       });
 
       // Click handler — uses ref to avoid stale closure
@@ -271,15 +275,29 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       const cy = cyRef.current;
       if (!cy || Object.keys(positions).length === 0) return;
 
-      cy.batch(() => {
-        for (const [id, pos] of Object.entries(positions)) {
-          const node = cy.getElementById(id);
-          if (node.length > 0) {
-            node.animate({ position: pos, duration: 300 } as unknown as cytoscape.AnimationOptions);
+      const count = Object.keys(positions).length;
+      // For large graphs, skip animation to avoid hundreds of simultaneous CSS animations
+      if (count > 80) {
+        cy.batch(() => {
+          for (const [id, pos] of Object.entries(positions)) {
+            const node = cy.getElementById(id);
+            if (node.length > 0) {
+              node.position(pos);
+            }
           }
-        }
-      });
-      setTimeout(() => cy.fit(undefined, 40), 350);
+        });
+        cy.fit(undefined, 40);
+      } else {
+        cy.batch(() => {
+          for (const [id, pos] of Object.entries(positions)) {
+            const node = cy.getElementById(id);
+            if (node.length > 0) {
+              node.animate({ position: pos, duration: 300 } as unknown as cytoscape.AnimationOptions);
+            }
+          }
+        });
+        setTimeout(() => cy.fit(undefined, 40), 350);
+      }
     }, [positions]);
 
     const runLayout = useCallback((type?: LayoutType) => {
@@ -297,7 +315,7 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       }
     }, [computeLayout, layoutType]);
 
-    // Debounced auto-layout: re-layout 500ms after the last node arrives
+    // Debounced auto-layout: re-layout after nodes stop arriving
     const layoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastLayoutCountRef = useRef(0);
     useEffect(() => {
@@ -310,12 +328,14 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
         return;
       }
 
-      // Debounce: wait 500ms of quiet before re-laying out
+      // Scale debounce time with graph size to avoid thrashing on big traces
+      const debounceMs = nodeCount > 200 ? 3000 : nodeCount > 50 ? 1500 : 800;
+
       if (layoutTimerRef.current) clearTimeout(layoutTimerRef.current);
       layoutTimerRef.current = setTimeout(() => {
         lastLayoutCountRef.current = nodeCount;
         runLayout();
-      }, 500);
+      }, debounceMs);
 
       return () => {
         if (layoutTimerRef.current) clearTimeout(layoutTimerRef.current);
@@ -404,64 +424,54 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       }
     }, [ctxMenu, ctxEntityName, ctxEntityType, ctxConfidence, chain]);
 
-    useImperativeHandle(ref, () => ({
-      addNode(node: GraphNode) {
-        nodesRef.current.set(node.address, node);
-        const cy = cyRef.current;
-        if (!cy) {
-          log(`WARN: cy not initialized, cannot add node ${node.address.slice(0, 10)}`);
-          return;
+    // Batch queue: accumulate nodes/edges and flush to Cytoscape periodically
+    const pendingNodesRef = useRef<GraphNode[]>([]);
+    const pendingEdgesRef = useRef<GraphEdge[]>([]);
+    const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const flushPending = useCallback(() => {
+      const cy = cyRef.current;
+      if (!cy) return;
+
+      const nodesToAdd = pendingNodesRef.current;
+      const edgesToAdd = pendingEdgesRef.current;
+      pendingNodesRef.current = [];
+      pendingEdgesRef.current = [];
+
+      if (nodesToAdd.length === 0 && edgesToAdd.length === 0) return;
+
+      const totalElements = nodesRef.current.size;
+      // For large graphs, hide edge labels to reduce rendering load
+      const suppressEdgeLabels = totalElements > 150;
+
+      cy.batch(() => {
+        for (const node of nodesToAdd) {
+          if (cy.getElementById(node.address).length) continue;
+
+          const truncAddr = node.address.length > 12
+            ? `${node.address.slice(0, 6)}...${node.address.slice(-4)}`
+            : node.address;
+
+          cy.add({
+            group: 'nodes',
+            data: {
+              id: node.address,
+              displayLabel: node.label ?? truncAddr,
+              fullAddress: node.address,
+              labelText: node.label,
+              hopLevel: node.hop,
+              size: node.hop === 0 ? 40 : Math.max(20, 35 - node.hop * 5),
+              riskColor: node.risk ? RISK_COLORS[node.risk] : undefined,
+            },
+            classes: node.hop === 0 ? 'root' : undefined,
+            position: { x: node.hop * 250 + 40, y: nodesRef.current.size * 60 },
+          });
         }
-        if (cy.getElementById(node.address).length) {
-          log(`SKIP: node ${node.address.slice(0, 10)} already exists`);
-          return;
-        }
 
-        const truncAddr = node.address.length > 12
-          ? `${node.address.slice(0, 6)}...${node.address.slice(-4)}`
-          : node.address;
-
-        cy.add({
-          group: 'nodes',
-          data: {
-            id: node.address,
-            displayLabel: node.label ?? truncAddr,
-            fullAddress: node.address,
-            labelText: node.label,
-            hopLevel: node.hop,
-            size: node.hop === 0 ? 40 : Math.max(20, 35 - node.hop * 5),
-            riskColor: node.risk ? RISK_COLORS[node.risk] : undefined,
-          },
-          classes: node.hop === 0 ? 'root' : undefined,
-          // Place based on hop rank so nodes land in the correct column before layout runs
-          position: { x: node.hop * 250 + 40, y: nodesRef.current.size * 60 },
-        });
-        const newCount = nodesRef.current.size;
-        setNodeCount(newCount);
-        log(`+node hop=${node.hop} ${node.address.slice(0, 10)}... (total: ${newCount})`);
-      },
-
-      addEdges(edges: GraphEdge[]) {
-        for (const edge of edges) {
-          edgesRef.current.push(edge);
-          const cy = cyRef.current;
-          if (!cy) {
-            log(`WARN: cy not initialized, cannot add edge`);
-            continue;
-          }
-
+        for (const edge of edgesToAdd) {
           const edgeId = `${edge.from}-${edge.to}-${edge.tx_hash}`;
           if (cy.getElementById(edgeId).length) continue;
-
-          // Check that source and target nodes exist
-          if (!cy.getElementById(edge.from).length) {
-            log(`WARN: edge source ${edge.from.slice(0, 10)} not found, skipping edge`);
-            continue;
-          }
-          if (!cy.getElementById(edge.to).length) {
-            log(`WARN: edge target ${edge.to.slice(0, 10)} not found, skipping edge`);
-            continue;
-          }
+          if (!cy.getElementById(edge.from).length || !cy.getElementById(edge.to).length) continue;
 
           let thickness = 1;
           try {
@@ -470,12 +480,14 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
           } catch { /* ignore */ }
 
           let edgeLabel = '';
-          try {
-            const val = Number(BigInt(edge.value));
-            if (edge.token === 'ETH' && val > 0) edgeLabel = `${(val / 1e18).toFixed(2)} ETH`;
-            else if (edge.token === 'BTC' && val > 0) edgeLabel = `${(val / 1e8).toFixed(4)} BTC`;
-            else if (val > 0) edgeLabel = `${val} ${edge.token}`;
-          } catch { /* ignore */ }
+          if (!suppressEdgeLabels) {
+            try {
+              const val = Number(BigInt(edge.value));
+              if (edge.token === 'ETH' && val > 0) edgeLabel = `${(val / 1e18).toFixed(2)} ETH`;
+              else if (edge.token === 'BTC' && val > 0) edgeLabel = `${(val / 1e8).toFixed(4)} BTC`;
+              else if (val > 0) edgeLabel = `${val} ${edge.token}`;
+            } catch { /* ignore */ }
+          }
 
           cy.add({
             group: 'edges',
@@ -489,8 +501,49 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
             },
           });
         }
+      });
+
+      if (nodesToAdd.length > 0) {
+        setNodeCount(nodesRef.current.size);
+        log(`+${nodesToAdd.length} nodes (total: ${nodesRef.current.size})`);
+      }
+      if (edgesToAdd.length > 0) {
         setEdgeCount(edgesRef.current.length);
-        log(`+${edges.length} edges (total: ${edgesRef.current.length})`);
+        log(`+${edgesToAdd.length} edges (total: ${edgesRef.current.length})`);
+      }
+    }, [log]);
+
+    const scheduleFlush = useCallback(() => {
+      if (flushTimerRef.current) return;
+      flushTimerRef.current = setTimeout(() => {
+        flushTimerRef.current = null;
+        flushPending();
+      }, 150);  // batch every 150ms
+    }, [flushPending]);
+
+    useImperativeHandle(ref, () => ({
+      addNode(node: GraphNode) {
+        nodesRef.current.set(node.address, node);
+        const cy = cyRef.current;
+        if (!cy) {
+          log(`WARN: cy not initialized, cannot add node ${node.address.slice(0, 10)}`);
+          return;
+        }
+        pendingNodesRef.current.push(node);
+        scheduleFlush();
+      },
+
+      addEdges(edges: GraphEdge[]) {
+        for (const edge of edges) {
+          edgesRef.current.push(edge);
+        }
+        const cy = cyRef.current;
+        if (!cy) {
+          log(`WARN: cy not initialized, cannot add edges`);
+          return;
+        }
+        pendingEdgesRef.current.push(...edges);
+        scheduleFlush();
       },
 
       getGraph() {
@@ -503,6 +556,9 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       clear() {
         nodesRef.current.clear();
         edgesRef.current = [];
+        pendingNodesRef.current = [];
+        pendingEdgesRef.current = [];
+        if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
         lastLayoutCountRef.current = 0;
         setNodeCount(0);
         setEdgeCount(0);
@@ -513,6 +569,9 @@ export const GraphView = forwardRef<GraphHandle, GraphViewProps>(
       },
 
       finalLayout() {
+        // Flush any pending elements before final layout
+        if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null; }
+        flushPending();
         log('Final layout triggered');
         runLayout();
       },

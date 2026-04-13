@@ -63,7 +63,7 @@ export function TraceControls({
             className="cs-select"
             disabled={isTracing}
           >
-            {[1, 2, 3, 4, 5].map((h) => (
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15].map((h) => (
               <option key={h} value={h}>{h} hop{h > 1 ? 's' : ''}</option>
             ))}
           </select>

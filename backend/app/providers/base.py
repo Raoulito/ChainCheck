@@ -31,10 +31,18 @@ class ChainProvider(abc.ABC):
 
     @abc.abstractmethod
     async def fetch_transactions(
-        self, address: str, page: int = 1, per_page: int = 50
+        self, address: str, page: int = 1, per_page: int = 50,
+        direction: str | None = None, max_pages: int = 5,
     ) -> tuple[list[NormalizedTx], int]:
-        """Fetch and normalize transactions. Returns (txs, total_count)."""
+        """Fetch and normalize transactions. Returns (txs, total_count).
+        direction: 'forward' returns only outgoing, 'backward' only incoming, None returns all.
+        max_pages: max API pagination pages per endpoint (each page = 10k txs for EVM).
+        """
         ...
+
+    async def get_balance(self, address: str) -> str | None:
+        """Return the on-chain balance in raw units, or None if unsupported."""
+        return None
 
     @abc.abstractmethod
     async def get_latest_block(self) -> int:

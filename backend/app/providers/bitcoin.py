@@ -46,12 +46,23 @@ class BitcoinProvider(ChainProvider):
             url = f"{self._api_base}{path}"
             return await self._rate_limited_request(url)
 
+    async def get_balance(self, address: str) -> str | None:
+        response = await self._btc_request(f"/address/{address}")
+        if response.status_code != 200:
+            return None
+        data = response.json()
+        # chain_stats has funded/spent totals for confirmed txs
+        funded = data.get("chain_stats", {}).get("funded_txo_sum", 0)
+        spent = data.get("chain_stats", {}).get("spent_txo_sum", 0)
+        return str(funded - spent)
+
     async def get_latest_block(self) -> int:
         response = await self._btc_request("/blocks/tip/height")
         return int(response.text.strip())
 
     async def fetch_transactions(
-        self, address: str, page: int = 1, per_page: int = 50
+        self, address: str, page: int = 1, per_page: int = 50,
+        direction: str | None = None, max_pages: int = 10,
     ) -> tuple[list[NormalizedTx], int]:
         all_txs = await self._fetch_all_txs(address)
         latest_block = await self.get_latest_block()
@@ -61,6 +72,12 @@ class BitcoinProvider(ChainProvider):
             tx = self._normalize_tx(raw_tx, address, latest_block)
             if tx is not None:
                 normalized.append(tx)
+
+        # Filter by direction before slicing so the tracer gets relevant txs
+        if direction == "forward":
+            normalized = [tx for tx in normalized if tx.from_address and tx.from_address.lower() == address.lower()]
+        elif direction == "backward":
+            normalized = [tx for tx in normalized if tx.to_address and tx.to_address.lower() == address.lower()]
 
         normalized.sort(key=lambda t: t.timestamp, reverse=True)
         total = len(normalized)

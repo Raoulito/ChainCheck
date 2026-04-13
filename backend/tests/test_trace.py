@@ -192,7 +192,8 @@ async def test_max_txs_per_node(db_session):
         await run_trace(job, db_session)
 
     # Verify per_page arg was 25
-    mock_provider.fetch_transactions.assert_called_once_with("0xroot", page=1, per_page=25)
+    # fetch_size = min(max_txs_per_node * 20, 10000) = min(25*20, 10000) = 500
+    mock_provider.fetch_transactions.assert_called_once_with("0xroot", page=1, per_page=500, direction="forward")
 
 
 # --- 5G-6: API budget distributed across hops ---
